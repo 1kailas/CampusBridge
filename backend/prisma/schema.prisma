@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                 String              @id @default(uuid())
+  email              String              @unique
+  password           String
+  name               String
+  role               String              @default("STUDENT") // STUDENT, TRAINER, ADMIN
+  college            String?
+  graduationYear     Int?
+  targetCompany      String?
+  submissions        Submission[]
+  notes              Note[]
+  assessmentAttempts AssessmentAttempt[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model Problem {
+  id                 String              @id @default(uuid())
+  slug               String              @unique
+  title              String
+  difficulty         String              // EASY, MEDIUM, HARD
+  category           String              // Arrays, Strings, DP, Trees, Graphs, etc.
+  description        String
+  examples           String              // JSON string of [{input, output, explanation}]
+  constraints        String              // JSON string of string[]
+  companyTags        String              // JSON string of string[] e.g. ["Amazon", "TCS"]
+  defaultTemplates   String              // JSON string of { python, cpp, java, javascript }
+  testCases          TestCase[]
+  solution           String?             // Editorial / approach
+  hints              String?             // JSON string of string[]
+  acceptanceRate     Float               @default(65.0)
+  order              Int                 @default(0)
+  submissions        Submission[]
+  notes              Note[]
+  assessmentProblems AssessmentProblem[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model TestCase {
+  id             String   @id @default(uuid())
+  problemId      String
+  problem        Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  input          String
+  expectedOutput String
+  isHidden       Boolean  @default(false)
+  explanation    String?
+}
+
+model Submission {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemId      String
+  problem        Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  code           String
+  language       String   // python, cpp, java, javascript
+  status         String   // ACCEPTED, WRONG_ANSWER, TIME_LIMIT_EXCEEDED, RUNTIME_ERROR, COMPILATION_ERROR
+  runtimeMs      Int?
+  memoryKb       Int?
+  passedTests    Int      @default(0)
+  totalTests     Int      @default(0)
+  errorMessage   String?
+  failedTestCase String?  // JSON string
+  createdAt      DateTime @default(now())
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problemId String
+  problem   Problem  @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, problemId])
+}
+
+model Sheet {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  title        String
+  description  String
+  category     String   // "Placement 100", "Blind 75", "Service MNCs", "FAANG"
+  problemSlugs String   // JSON string of string[]
+  icon         String?
+  createdAt    DateTime @default(now())
+}
+
+model Assessment {
+  id              String              @id @default(uuid())
+  title           String
+  description     String
+  company         String              // e.g. "TCS NQT", "Amazon OA", "Infosys DPhi"
+  durationMinutes Int                 @default(60)
+  totalMarks      Int                 @default(100)
+  instructions    String?
+  problems        AssessmentProblem[]
+  attempts        AssessmentAttempt[]
+  createdAt       DateTime            @default(now())
+}
+
+model AssessmentProblem {
+  id           String     @id @default(uuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  problemId    String
+  problem      Problem    @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  points       Int        @default(50)
+  order        Int        @default(0)
+}
+
+model AssessmentAttempt {
+  id           String     @id @default(uuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  score        Int        @default(0)
+  status       String     @default("IN_PROGRESS") // IN_PROGRESS, SUBMITTED, EXPIRED
+  startedAt    DateTime   @default(now())
+  submittedAt  DateTime?
+  results      String?    // JSON string
+}

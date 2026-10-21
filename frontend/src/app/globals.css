@@ -1,0 +1,453 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ------------------------------------------------------------------ *
+ * Design system: "Campus Bridge" — an answer-sheet instrument.
+ * Surfaces are one graphite ramp, structure comes from hairlines and
+ * alignment (never drop shadows on content), amber is reserved for
+ * brand + reward, and green/amber/red mean difficulty and nothing else.
+ * ------------------------------------------------------------------ */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --mark: #ffc145;
+    --font-plex-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-plex-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: clip;
+  }
+
+  body {
+    @apply bg-ink-900 text-fg font-sans antialiased;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+    text-rendering: optimizeLegibility;
+    overflow-x: clip;
+    min-height: 100vh;
+  }
+
+  /* One focus treatment for every interactive element on the site. */
+  :focus-visible {
+    outline: 2px solid var(--mark);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: rgba(255, 193, 69, 0.28);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #2a3241;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #39424f;
+    background-clip: padding-box;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-white;
+    letter-spacing: -0.018em;
+  }
+
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ------------------------------ layout ------------------------------ */
+
+  .shell {
+    @apply w-full max-w-shell mx-auto px-5 sm:px-8 xl:px-12;
+  }
+
+  .page {
+    @apply w-full flex-1 py-7 sm:py-9 space-y-7;
+  }
+
+  .page-head {
+    @apply flex flex-col gap-4 md:flex-row md:items-end md:justify-between pb-6 border-b border-line;
+  }
+
+  .page-title {
+    @apply text-2xl sm:text-3xl font-semibold text-white;
+    letter-spacing: -0.022em;
+  }
+
+  .page-sub {
+    @apply mt-1.5 text-sm text-fg-2 max-w-2xl leading-relaxed;
+  }
+
+  .section-head {
+    @apply flex items-end justify-between gap-4 pb-4;
+  }
+
+  .section-title {
+    @apply text-lg sm:text-xl font-semibold text-white;
+    letter-spacing: -0.018em;
+  }
+
+  .section-sub {
+    @apply mt-1 text-sm text-fg-3 leading-relaxed;
+  }
+
+  /* ------------------------------ surfaces ---------------------------- */
+
+  .card {
+    @apply bg-ink-800 border border-line rounded-xl shadow-inset;
+  }
+
+  .card-pad {
+    @apply p-5 sm:p-6;
+  }
+
+  .card-hover {
+    @apply transition-colors duration-150 hover:border-line-strong hover:bg-ink-750;
+  }
+
+  .well {
+    @apply bg-ink-750 border border-line-soft rounded-lg;
+  }
+
+  .divider {
+    @apply border-t border-line;
+  }
+
+  /* ------------------------------ buttons ----------------------------- */
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md font-medium
+      whitespace-nowrap select-none transition-colors duration-150
+      disabled:opacity-45 disabled:pointer-events-none;
+  }
+
+  .btn-sm {
+    @apply h-8 px-3 text-[13px];
+  }
+
+  .btn-md {
+    @apply h-9 px-4 text-sm;
+  }
+
+  .btn-lg {
+    @apply h-11 px-5 text-sm;
+  }
+
+  .btn-block {
+    @apply w-full;
+  }
+
+  .btn-primary {
+    @apply bg-paper text-ink-950 font-semibold hover:bg-white;
+  }
+
+  .btn-secondary {
+    @apply bg-ink-750 text-fg border border-line-strong font-medium hover:bg-ink-700 hover:border-ink-500;
+  }
+
+  .btn-ghost {
+    @apply text-fg-2 font-medium hover:text-fg hover:bg-ink-750;
+  }
+
+  .btn-danger {
+    @apply bg-hard/10 text-hard border border-hard/35 font-medium hover:bg-hard/20;
+  }
+
+  .btn-icon {
+    @apply btn btn-sm px-0 w-8;
+  }
+
+  /* ------------------------------ fields ------------------------------ */
+
+  .field {
+    @apply w-full bg-ink-700 border border-line rounded-md text-sm text-fg
+      transition-colors duration-150 placeholder:text-fg-4
+      focus:border-mark focus:outline-none;
+  }
+
+  .field:focus-visible {
+    outline: 2px solid var(--mark);
+    outline-offset: 1px;
+  }
+
+  .input {
+    @apply field h-9 px-3;
+  }
+
+  .textarea {
+    @apply field px-3 py-2.5 leading-relaxed resize-y;
+  }
+
+  .select {
+    @apply field h-9 pl-3 pr-8 cursor-pointer appearance-none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23727C90' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
+  }
+
+  .label {
+    @apply block text-[13px] font-medium text-fg-2 mb-1.5;
+  }
+
+  .label-hint {
+    @apply text-xs font-normal text-fg-4;
+  }
+
+  /* ------------------------- chips, tags, badges ---------------------- */
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 h-7 px-2.5 rounded-sm text-[13px]
+      font-medium text-fg-3 border border-line bg-ink-750
+      transition-colors duration-150 hover:text-fg hover:border-line-strong;
+  }
+
+  .chip-on {
+    @apply bg-paper text-ink-950 border-paper font-semibold hover:bg-white hover:text-ink-950 hover:border-white;
+  }
+
+  .tag {
+    @apply inline-flex items-center rounded-xs px-1.5 py-0.5 text-xs font-medium
+      text-fg-3 bg-ink-750 border border-line;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-xs px-2 py-0.5 text-xs
+      font-semibold border leading-tight;
+  }
+
+  .badge-easy {
+    @apply text-easy bg-easy/10 border-easy/30;
+  }
+
+  .badge-medium {
+    @apply text-medium bg-medium/10 border-medium/30;
+  }
+
+  .badge-hard {
+    @apply text-hard bg-hard/10 border-hard/30;
+  }
+
+  .badge-neutral {
+    @apply text-fg-2 bg-ink-750 border-line;
+  }
+
+  .badge-mark {
+    @apply text-mark bg-mark/10 border-mark/30;
+  }
+
+  /* ------------------------------- tables ----------------------------- */
+
+  .table {
+    @apply w-full text-sm border-separate border-spacing-0;
+  }
+
+  .thead {
+    @apply bg-ink-750;
+  }
+
+  .thead th {
+    @apply px-5 py-3 text-left text-xs font-medium text-fg-3 border-b border-line;
+  }
+
+  .tbody tr > * {
+    @apply border-b border-line-soft;
+  }
+
+  .tbody tr:last-child > * {
+    @apply border-b-0;
+  }
+
+  .tbody tr {
+    @apply transition-colors duration-150;
+  }
+
+  .tbody tr:hover > * {
+    @apply bg-ink-750/70;
+  }
+
+  .td {
+    @apply px-5 py-3.5 align-middle;
+  }
+
+  .num {
+    @apply font-mono tabular-nums;
+  }
+
+  /* ------------------------------ progress ---------------------------- */
+
+  .bar {
+    @apply h-1.5 w-full rounded-full bg-ink-700 overflow-hidden;
+  }
+
+  .bar-fill {
+    @apply h-full rounded-full transition-[width] duration-300 ease-out;
+  }
+
+  /* --------------------------- segmented control ---------------------- */
+
+  .seg {
+    @apply inline-flex items-center gap-0.5 rounded-md border border-line bg-ink-850 p-0.5;
+  }
+
+  .seg-btn {
+    @apply rounded-sm h-7 px-2.5 text-xs font-medium text-fg-3 transition-colors duration-150 hover:text-fg;
+  }
+
+  .seg-btn-on {
+    @apply bg-ink-700 text-fg;
+  }
+
+  /* ------------------------------- stats ------------------------------ */
+
+  .stat-label {
+    @apply text-xs font-medium text-fg-3;
+  }
+
+  .stat-value {
+    @apply text-2xl font-semibold text-white tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .stat-note {
+    @apply text-xs text-fg-4 tabular-nums;
+  }
+
+  /* ---------------------------- feedback states ----------------------- */
+
+  .empty {
+    @apply flex flex-col items-center justify-center gap-2.5 py-14 px-6 text-center;
+  }
+
+  .empty-icon {
+    @apply w-10 h-10 rounded-lg bg-ink-750 border border-line flex items-center justify-center text-fg-3;
+  }
+
+  .empty-title {
+    @apply text-sm font-medium text-fg-2;
+  }
+
+  .empty-sub {
+    @apply text-sm text-fg-3 max-w-sm leading-relaxed;
+  }
+
+  .notice {
+    @apply flex items-start gap-3 rounded-lg border px-4 py-3 text-sm;
+  }
+
+  .notice-ok {
+    @apply bg-easy/10 border-easy/30 text-easy;
+  }
+
+  .notice-err {
+    @apply bg-hard/10 border-hard/30 text-hard;
+  }
+
+  .notice-mark {
+    @apply bg-mark/10 border-mark/30 text-mark;
+  }
+
+  /* --------------------------- code surfaces -------------------------- */
+
+  .code-well {
+    @apply bg-ink-950 border border-line rounded-lg px-3.5 py-3 font-mono text-[13px]
+      text-fg-2 leading-relaxed whitespace-pre-wrap overflow-x-auto;
+  }
+
+  .monaco-editor {
+    padding-top: 4px;
+  }
+}
+
+@layer utilities {
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    border: 2px solid #2a3241;
+    border-top-color: var(--mark);
+    animation: cb-spin 0.7s linear infinite;
+  }
+
+  .spinner-lg {
+    width: 28px;
+    height: 28px;
+    border-width: 2.5px;
+  }
+
+  @keyframes cb-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Faint graph-paper ruling — the answer-sheet motif, hero surfaces only. */
+  .ruled {
+    background-image:
+      linear-gradient(to right, rgba(233, 236, 243, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(233, 236, 243, 0.03) 1px, transparent 1px);
+    background-size: 30px 30px;
+    background-position: center top;
+  }
+
+  .animate-slow-pulse {
+    animation: cb-pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes cb-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+}
