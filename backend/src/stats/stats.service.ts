@@ -105,6 +105,7 @@ export class StatsService {
   async getLeaderboard() {
     // Group accepted submissions by user
     const users = await this.prisma.user.findMany({
+      where: { role: 'STUDENT' },
       select: {
         id: true,
         name: true,

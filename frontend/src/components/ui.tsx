@@ -1,4 +1,7 @@
-import React, { forwardRef } from 'react';
+'use client';
+
+import React, { forwardRef, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import { Search } from 'lucide-react';
@@ -6,7 +9,7 @@ import { cn } from '@/lib/cn';
 
 /* ------------------------------------------------------------------ *
  * Shared primitives. Every view composes from these so surfaces,
- * buttons, badges and empty states stay identical across the app.
+ * buttons, badges, dialogs, and empty states stay identical.
  * ------------------------------------------------------------------ */
 
 /* ------------------------------- button ---------------------------- */
@@ -150,7 +153,7 @@ export function PageHeader({
         <h1 className="page-title">{title}</h1>
         {sub ? <p className="page-sub">{sub}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2.5 shrink-0">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2.5">{actions}</div> : null}
     </header>
   );
 }
@@ -190,10 +193,12 @@ const barTone: Record<string, string> = {
 export function ProgressBar({
   value = 0,
   tone = 'neutral',
+  label,
   className,
 }: {
   value?: number;
   tone?: 'neutral' | 'mark' | 'easy' | 'medium' | 'hard';
+  label?: string;
   className?: string;
 }) {
   const pct = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
@@ -201,6 +206,7 @@ export function ProgressBar({
     <div
       className={cn('bar', className)}
       role="progressbar"
+      aria-label={label || 'Progress'}
       aria-valuenow={Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
@@ -257,6 +263,65 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   );
 }
 
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('skeleton', className)} aria-hidden />;
+}
+
+export function CardGridSkeleton({
+  count = 4,
+  className,
+}: {
+  count?: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn('grid gap-4 sm:grid-cols-2 lg:grid-cols-4', className)} aria-hidden>
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="card card-pad">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="mt-4 h-4 w-4/5" />
+          <Skeleton className="mt-2 h-3 w-full" />
+          <Skeleton className="mt-1.5 h-3 w-2/3" />
+          <div className="mt-6 border-t border-line-soft pt-4">
+            <Skeleton className="h-1.5 w-full rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function TableSkeleton({
+  rows = 6,
+  className,
+}: {
+  rows?: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn('card overflow-hidden', className)} aria-hidden>
+      <div className="flex items-center gap-4 border-b border-line bg-ink-850 px-5 py-3.5">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="ml-auto h-3 w-16" />
+      </div>
+      <div className="divide-y divide-line-soft">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className="flex items-center gap-4 px-5 py-4">
+            <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-4 w-2/5" />
+              <Skeleton className="mt-2 h-3 w-1/3" />
+            </div>
+            <Skeleton className="hidden h-5 w-16 sm:block" />
+            <Skeleton className="h-5 w-12" />
+            <Skeleton className="h-7 w-16" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function EmptyState({
   icon: Icon,
   title,
@@ -272,7 +337,7 @@ export function EmptyState({
     <div className="empty">
       {Icon ? (
         <span className="empty-icon">
-          <Icon className="w-5 h-5" aria-hidden />
+          <Icon className="h-5 w-5" aria-hidden />
         </span>
       ) : null}
       <p className="empty-title">{title}</p>
@@ -296,8 +361,8 @@ export function Notice({
   const toneClass = { ok: 'notice-ok', err: 'notice-err', mark: 'notice-mark' }[tone];
   return (
     <div className={cn('notice', toneClass)} role={tone === 'err' ? 'alert' : 'status'}>
-      {Icon ? <Icon className="w-4 h-4 shrink-0 mt-0.5" aria-hidden /> : null}
-      <div className="flex-1 min-w-0">{children}</div>
+      {Icon ? <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> : null}
+      <div className="min-w-0 flex-1">{children}</div>
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
@@ -318,12 +383,188 @@ export function Stat({
   tone?: 'easy' | 'medium' | 'hard' | 'mark';
   className?: string;
 }) {
-  const valueTone = tone ? { easy: 'text-easy', medium: 'text-medium', hard: 'text-hard', mark: 'text-mark' }[tone] : 'text-white';
+  const valueTone = tone ? { easy: 'text-easy', medium: 'text-medium', hard: 'text-hard', mark: 'text-mark-bright' }[tone] : 'text-white';
   return (
     <div className={cn('well p-4', className)}>
       <div className="stat-label">{label}</div>
       <div className={cn('stat-value mt-1', valueTone)}>{value}</div>
       {note ? <div className="stat-note mt-2">{note}</div> : null}
     </div>
+  );
+}
+
+/* ------------------------------- dialogs --------------------------- */
+
+const focusableSelector =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function Dialog({
+  open,
+  onClose,
+  title,
+  description,
+  children,
+  footer,
+  dismissible = true,
+}: {
+  open: boolean;
+  onClose?: () => void;
+  title: string;
+  description?: string;
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+  dismissible?: boolean;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusTimer = window.setTimeout(() => {
+      const preferred = panelRef.current?.querySelector<HTMLElement>('[data-autofocus]');
+      const first = panelRef.current?.querySelector<HTMLElement>(focusableSelector);
+      (preferred || first || panelRef.current)?.focus();
+    }, 10);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && dismissible) {
+        event.preventDefault();
+        onCloseRef.current?.();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !panelRef.current) return;
+
+      const focusable = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(focusableSelector)
+      ).filter((element) => element.offsetParent !== null || element === document.activeElement);
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, [open, dismissible]);
+
+  if (!mounted || !open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && dismissible) onCloseRef.current?.();
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        className="w-full max-w-md overflow-hidden rounded-lg border border-line-strong bg-ink-800 shadow-pop animate-fade-up"
+      >
+        <div className="border-b border-line px-6 py-5">
+          <h2 id={titleId} className="text-lg font-semibold text-white">
+            {title}
+          </h2>
+          {description ? (
+            <p id={descriptionId} className="mt-1.5 text-sm leading-relaxed text-fg-3">
+              {description}
+            </p>
+          ) : null}
+        </div>
+
+        {children ? <div className="px-6 py-5">{children}</div> : null}
+
+        {footer ? (
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-ink-850/60 px-6 py-4">
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  tone = 'primary',
+  busy = false,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'primary' | 'danger';
+  busy?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onClose={onCancel}
+      title={title}
+      description={description}
+      dismissible={!busy}
+      footer={
+        <>
+          <Button variant="ghost" size="md" onClick={onCancel} disabled={busy} data-autofocus>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={tone === 'danger' ? 'danger' : 'primary'}
+            size="md"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? 'Working…' : confirmLabel}
+          </Button>
+        </>
+      }
+    />
   );
 }

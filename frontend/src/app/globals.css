@@ -3,42 +3,61 @@
 @tailwind utilities;
 
 /* ------------------------------------------------------------------ *
- * Design system: "Campus Bridge" — an answer-sheet instrument.
- * Surfaces are one graphite ramp, structure comes from hairlines and
- * alignment (never drop shadows on content), amber is reserved for
- * brand + reward, and green/amber/red mean difficulty and nothing else.
+ * Campus Bridge design system
+ * A calm, high-trust workspace: deep navy planes, one indigo action
+ * colour, hairline borders, and typography that stays legible at 14px.
  * ------------------------------------------------------------------ */
 
 @layer base {
   :root {
     color-scheme: dark;
-    --mark: #ffc145;
-    --font-plex-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    --font-plex-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --mark: #4f46e5;
+    --mark-bright: #a5b4fc;
+    --accent: #22d3ee;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+      Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      monospace;
   }
 
   html {
     -webkit-text-size-adjust: 100%;
     overflow-x: clip;
+    scroll-behavior: smooth;
+    scrollbar-gutter: stable;
   }
 
   body {
-    @apply bg-ink-900 text-fg font-sans antialiased;
+    @apply bg-ink-900 font-sans text-fg antialiased;
     font-size: 0.9375rem;
     line-height: 1.6;
     text-rendering: optimizeLegibility;
     overflow-x: clip;
     min-height: 100vh;
+    background-image: radial-gradient(1000px 520px at 50% -18%, rgba(79, 70, 229, 0.1), transparent 70%);
+    background-repeat: no-repeat;
   }
 
-  /* One focus treatment for every interactive element on the site. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-white;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
   :focus-visible {
-    outline: 2px solid var(--mark);
-    outline-offset: 2px;
+    outline: 2px solid var(--mark-bright);
+    outline-offset: 3px;
   }
 
   ::selection {
-    background: rgba(255, 193, 69, 0.28);
+    background: rgba(79, 70, 229, 0.45);
     color: #fff;
   }
 
@@ -52,14 +71,14 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #2a3241;
+    background: #2a3d61;
     border: 3px solid transparent;
     background-clip: padding-box;
     border-radius: 999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #39424f;
+    background: #3b527d;
     background-clip: padding-box;
   }
 
@@ -67,19 +86,11 @@
     background: transparent;
   }
 
-  h1,
-  h2,
-  h3,
-  h4 {
-    @apply text-white;
-    letter-spacing: -0.018em;
-  }
-
   code,
   pre,
   kbd,
   samp {
-    font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
 
   table {
@@ -105,43 +116,47 @@
   /* ------------------------------ layout ------------------------------ */
 
   .shell {
-    @apply w-full max-w-shell mx-auto px-5 sm:px-8 xl:px-12;
+    @apply mx-auto w-full max-w-shell px-4 sm:px-6 lg:px-8;
   }
 
   .page {
-    @apply w-full flex-1 py-7 sm:py-9 space-y-7;
+    @apply flex w-full flex-1 flex-col gap-8 py-8 sm:py-10 lg:py-12;
   }
 
   .page-head {
-    @apply flex flex-col gap-4 md:flex-row md:items-end md:justify-between pb-6 border-b border-line;
+    @apply flex flex-col gap-3 border-b border-line pb-6 sm:gap-4 sm:pb-7 lg:flex-row lg:items-end lg:justify-between;
   }
 
   .page-title {
-    @apply text-2xl sm:text-3xl font-semibold text-white;
-    letter-spacing: -0.022em;
+    @apply text-[26px] font-semibold text-white sm:text-[30px] lg:text-[32px];
+    letter-spacing: -0.03em;
   }
 
   .page-sub {
-    @apply mt-1.5 text-sm text-fg-2 max-w-2xl leading-relaxed;
+    @apply mt-2 max-w-2xl text-sm leading-relaxed text-fg-3 sm:text-[15px];
   }
 
   .section-head {
-    @apply flex items-end justify-between gap-4 pb-4;
+    @apply flex flex-wrap items-end justify-between gap-3 pb-4;
   }
 
   .section-title {
-    @apply text-lg sm:text-xl font-semibold text-white;
-    letter-spacing: -0.018em;
+    @apply text-[17px] font-semibold text-white sm:text-lg;
+    letter-spacing: -0.02em;
   }
 
   .section-sub {
-    @apply mt-1 text-sm text-fg-3 leading-relaxed;
+    @apply mt-1 max-w-2xl text-sm leading-relaxed text-fg-3;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-fg-3;
   }
 
   /* ------------------------------ surfaces ---------------------------- */
 
   .card {
-    @apply bg-ink-800 border border-line rounded-xl shadow-inset;
+    @apply rounded-lg border border-line bg-ink-800;
   }
 
   .card-pad {
@@ -149,11 +164,11 @@
   }
 
   .card-hover {
-    @apply transition-colors duration-150 hover:border-line-strong hover:bg-ink-750;
+    @apply transition-colors duration-150 hover:border-mark/40 hover:bg-ink-750;
   }
 
   .well {
-    @apply bg-ink-750 border border-line-soft rounded-lg;
+    @apply rounded-md border border-line-soft bg-ink-850;
   }
 
   .divider {
@@ -163,9 +178,7 @@
   /* ------------------------------ buttons ----------------------------- */
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md font-medium
-      whitespace-nowrap select-none transition-colors duration-150
-      disabled:opacity-45 disabled:pointer-events-none;
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-45;
   }
 
   .btn-sm {
@@ -185,36 +198,33 @@
   }
 
   .btn-primary {
-    @apply bg-paper text-ink-950 font-semibold hover:bg-white;
+    @apply bg-mark font-semibold text-white hover:bg-mark-600 active:bg-mark-700;
   }
 
   .btn-secondary {
-    @apply bg-ink-750 text-fg border border-line-strong font-medium hover:bg-ink-700 hover:border-ink-500;
+    @apply border border-line-strong bg-ink-800 font-medium text-fg hover:border-ink-500 hover:bg-ink-750;
   }
 
   .btn-ghost {
-    @apply text-fg-2 font-medium hover:text-fg hover:bg-ink-750;
+    @apply font-medium text-fg-3 hover:bg-white/[0.05] hover:text-fg;
   }
 
   .btn-danger {
-    @apply bg-hard/10 text-hard border border-hard/35 font-medium hover:bg-hard/20;
+    @apply border border-hard/35 bg-hard/10 font-medium text-hard hover:bg-hard/20;
   }
 
   .btn-icon {
-    @apply btn btn-sm px-0 w-8;
+    @apply btn btn-sm w-8 px-0;
   }
 
   /* ------------------------------ fields ------------------------------ */
 
   .field {
-    @apply w-full bg-ink-700 border border-line rounded-md text-sm text-fg
-      transition-colors duration-150 placeholder:text-fg-4
-      focus:border-mark focus:outline-none;
+    @apply w-full rounded-md border border-line bg-ink-850 text-sm text-fg transition-colors duration-150 placeholder:text-fg-4 hover:border-line-strong focus:border-mark/80 focus:outline-none focus:ring-2 focus:ring-mark/25;
   }
 
   .field:focus-visible {
-    outline: 2px solid var(--mark);
-    outline-offset: 1px;
+    outline: none;
   }
 
   .input {
@@ -222,19 +232,19 @@
   }
 
   .textarea {
-    @apply field px-3 py-2.5 leading-relaxed resize-y;
+    @apply field resize-y px-3 py-2.5 leading-relaxed;
   }
 
   .select {
-    @apply field h-9 pl-3 pr-8 cursor-pointer appearance-none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23727C90' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75'/%3E%3C/svg%3E");
+    @apply field h-9 cursor-pointer appearance-none pl-3 pr-8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238B99B4' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.75 6 7.75 9 4.75'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 12px;
   }
 
   .label {
-    @apply block text-[13px] font-medium text-fg-2 mb-1.5;
+    @apply mb-1.5 block text-[13px] font-medium text-fg-2;
   }
 
   .label-hint {
@@ -244,57 +254,53 @@
   /* ------------------------- chips, tags, badges ---------------------- */
 
   .chip {
-    @apply inline-flex items-center gap-1.5 h-7 px-2.5 rounded-sm text-[13px]
-      font-medium text-fg-3 border border-line bg-ink-750
-      transition-colors duration-150 hover:text-fg hover:border-line-strong;
+    @apply inline-flex h-8 items-center gap-1.5 rounded-full border border-line bg-transparent px-3 text-[13px] font-medium text-fg-3 transition-colors duration-150 hover:border-line-strong hover:bg-white/[0.04] hover:text-fg;
   }
 
   .chip-on {
-    @apply bg-paper text-ink-950 border-paper font-semibold hover:bg-white hover:text-ink-950 hover:border-white;
+    @apply border-mark bg-mark font-semibold text-white hover:border-mark-600 hover:bg-mark-600 hover:text-white;
   }
 
   .tag {
-    @apply inline-flex items-center rounded-xs px-1.5 py-0.5 text-xs font-medium
-      text-fg-3 bg-ink-750 border border-line;
+    @apply inline-flex items-center rounded border border-line bg-white/[0.02] px-1.5 py-0.5 text-[11px] font-medium leading-tight text-fg-3;
   }
 
   .badge {
-    @apply inline-flex items-center gap-1 rounded-xs px-2 py-0.5 text-xs
-      font-semibold border leading-tight;
+    @apply inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[11px] font-semibold leading-tight;
   }
 
   .badge-easy {
-    @apply text-easy bg-easy/10 border-easy/30;
+    @apply border-easy/30 bg-easy/10 text-easy;
   }
 
   .badge-medium {
-    @apply text-medium bg-medium/10 border-medium/30;
+    @apply border-medium/30 bg-medium/10 text-medium;
   }
 
   .badge-hard {
-    @apply text-hard bg-hard/10 border-hard/30;
+    @apply border-hard/30 bg-hard/10 text-hard;
   }
 
   .badge-neutral {
-    @apply text-fg-2 bg-ink-750 border-line;
+    @apply border-line bg-white/[0.03] text-fg-2;
   }
 
   .badge-mark {
-    @apply text-mark bg-mark/10 border-mark/30;
+    @apply border-mark/40 bg-mark/15 text-mark-bright;
   }
 
   /* ------------------------------- tables ----------------------------- */
 
   .table {
-    @apply w-full text-sm border-separate border-spacing-0;
+    @apply w-full border-separate border-spacing-0 text-sm;
   }
 
   .thead {
-    @apply bg-ink-750;
+    @apply bg-ink-850;
   }
 
   .thead th {
-    @apply px-5 py-3 text-left text-xs font-medium text-fg-3 border-b border-line;
+    @apply border-b border-line px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-3 sm:px-5;
   }
 
   .tbody tr > * {
@@ -310,11 +316,11 @@
   }
 
   .tbody tr:hover > * {
-    @apply bg-ink-750/70;
+    @apply bg-white/[0.025];
   }
 
   .td {
-    @apply px-5 py-3.5 align-middle;
+    @apply px-4 py-3.5 align-middle sm:px-5;
   }
 
   .num {
@@ -324,25 +330,25 @@
   /* ------------------------------ progress ---------------------------- */
 
   .bar {
-    @apply h-1.5 w-full rounded-full bg-ink-700 overflow-hidden;
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-ink-700;
   }
 
   .bar-fill {
-    @apply h-full rounded-full transition-[width] duration-300 ease-out;
+    @apply h-full rounded-full transition-[width] duration-500 ease-out;
   }
 
   /* --------------------------- segmented control ---------------------- */
 
   .seg {
-    @apply inline-flex items-center gap-0.5 rounded-md border border-line bg-ink-850 p-0.5;
+    @apply inline-flex items-center gap-0.5 rounded-md border border-line bg-ink-850 p-1;
   }
 
   .seg-btn {
-    @apply rounded-sm h-7 px-2.5 text-xs font-medium text-fg-3 transition-colors duration-150 hover:text-fg;
+    @apply flex h-7 items-center justify-center rounded px-2.5 text-xs font-medium text-fg-3 transition-colors duration-150 hover:bg-white/[0.04] hover:text-fg;
   }
 
   .seg-btn-on {
-    @apply bg-ink-700 text-fg;
+    @apply bg-ink-700 text-white;
   }
 
   /* ------------------------------- stats ------------------------------ */
@@ -352,22 +358,22 @@
   }
 
   .stat-value {
-    @apply text-2xl font-semibold text-white tabular-nums;
-    letter-spacing: -0.02em;
+    @apply text-2xl font-semibold tabular-nums text-white;
+    letter-spacing: -0.03em;
   }
 
   .stat-note {
-    @apply text-xs text-fg-4 tabular-nums;
+    @apply text-xs tabular-nums text-fg-4;
   }
 
   /* ---------------------------- feedback states ----------------------- */
 
   .empty {
-    @apply flex flex-col items-center justify-center gap-2.5 py-14 px-6 text-center;
+    @apply flex flex-col items-center justify-center gap-2.5 px-6 py-12 text-center;
   }
 
   .empty-icon {
-    @apply w-10 h-10 rounded-lg bg-ink-750 border border-line flex items-center justify-center text-fg-3;
+    @apply flex h-10 w-10 items-center justify-center rounded-lg border border-line bg-ink-850 text-fg-3;
   }
 
   .empty-title {
@@ -375,34 +381,43 @@
   }
 
   .empty-sub {
-    @apply text-sm text-fg-3 max-w-sm leading-relaxed;
+    @apply max-w-sm text-sm leading-relaxed text-fg-3;
   }
 
   .notice {
-    @apply flex items-start gap-3 rounded-lg border px-4 py-3 text-sm;
+    @apply flex items-start gap-3 rounded-md border px-4 py-3 text-sm;
   }
 
   .notice-ok {
-    @apply bg-easy/10 border-easy/30 text-easy;
+    @apply border-easy/30 bg-easy/10 text-easy;
   }
 
   .notice-err {
-    @apply bg-hard/10 border-hard/30 text-hard;
+    @apply border-hard/30 bg-hard/10 text-hard;
   }
 
   .notice-mark {
-    @apply bg-mark/10 border-mark/30 text-mark;
+    @apply border-mark/35 bg-mark/10 text-mark-bright;
   }
 
   /* --------------------------- code surfaces -------------------------- */
 
   .code-well {
-    @apply bg-ink-950 border border-line rounded-lg px-3.5 py-3 font-mono text-[13px]
-      text-fg-2 leading-relaxed whitespace-pre-wrap overflow-x-auto;
+    @apply overflow-x-auto whitespace-pre-wrap rounded-md border border-line bg-ink-950 px-3.5 py-3 font-mono text-[13px] leading-relaxed text-fg-2;
   }
 
   .monaco-editor {
     padding-top: 4px;
+  }
+
+  /* ----------------------------- skeletons ---------------------------- */
+
+  .skeleton {
+    @apply animate-pulse rounded bg-ink-700/70;
+  }
+
+  .skeleton-soft {
+    @apply animate-pulse rounded bg-ink-750;
   }
 }
 
@@ -411,8 +426,8 @@
     width: 20px;
     height: 20px;
     border-radius: 999px;
-    border: 2px solid #2a3241;
-    border-top-color: var(--mark);
+    border: 2px solid #223252;
+    border-top-color: var(--mark-bright);
     animation: cb-spin 0.7s linear infinite;
   }
 
@@ -428,13 +443,48 @@
     }
   }
 
-  /* Faint graph-paper ruling — the answer-sheet motif, hero surfaces only. */
+  /* Faint technical grid used behind the hero surface. */
   .ruled {
     background-image:
-      linear-gradient(to right, rgba(233, 236, 243, 0.03) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(233, 236, 243, 0.03) 1px, transparent 1px);
-    background-size: 30px 30px;
+      linear-gradient(to right, rgba(233, 238, 249, 0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(233, 238, 249, 0.025) 1px, transparent 1px);
+    background-size: 56px 56px;
     background-position: center top;
+  }
+
+  .grid-mask {
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, #000 30%, transparent 78%);
+  }
+
+  .hero-surface {
+    background: radial-gradient(760px 360px at 20% 0%, rgba(79, 70, 229, 0.12), transparent 72%);
+  }
+
+  /* Retained intentionally as solid colours — gradient text is never used. */
+  .text-gradient {
+    color: var(--mark-bright);
+  }
+
+  .brand-gradient {
+    background: var(--mark);
+  }
+
+  .ring-brand {
+    box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.28);
+  }
+
+  .glass {
+    background: rgba(8, 14, 27, 0.94);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 
   .animate-slow-pulse {
@@ -447,7 +497,7 @@
       opacity: 1;
     }
     50% {
-      opacity: 0.35;
+      opacity: 0.55;
     }
   }
 }

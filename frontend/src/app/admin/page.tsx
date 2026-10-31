@@ -18,17 +18,23 @@ import {
   Send,
   ShieldCheck,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import {
   Badge,
+  ConfirmDialog,
   DifficultyBadge,
   EmptyState,
+  LinkButton,
   LoadingState,
   Notice,
   PageHeader,
+  Skeleton,
+  Tag,
   buttonClass,
 } from '@/components/ui';
+import AuthRequired from '@/components/AuthRequired';
 
 const COMMON_RECRUITERS = [
   'Amazon',
@@ -73,7 +79,17 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'create' | 'manage'>('create');
   const [publishing, setPublishing] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [statusMsg, setStatusMsg] = useState<{
+    type: 'success' | 'error';
+    text: string;
+    slug?: string;
+  } | null>(null);
+
+  const [authReady, setAuthReady] = useState(false);
+  const [signedOut, setSignedOut] = useState(false);
+  const [trainerAllowed, setTrainerAllowed] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Problem metadata
   const [title, setTitle] = useState('');
@@ -133,13 +149,29 @@ export default function AdminPage() {
       setProblems(list || []);
     } catch (e) {
       console.error(e);
+      setStatusMsg({
+        type: 'error',
+        text: 'Could not load the question list. Check that the backend is running, then refresh.',
+      });
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadProblems();
+    const user = api.getUser();
+    const isTrainer = user?.role === 'ADMIN' || user?.role === 'TRAINER';
+
+    setSignedOut(!user);
+    setTrainerAllowed(isTrainer);
+    setAuthReady(true);
+
+    if (user && isTrainer) {
+      loadProblems();
+    } else {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTitleChange = (val: string) => {
@@ -193,9 +225,10 @@ export default function AdminPage() {
 
   const removeTestCase = (index: number) => {
     if (testCases.length <= 1) {
-      window.alert('A problem needs at least one test case.');
+      setStatusMsg({ type: 'error', text: 'A problem needs at least one test case.' });
       return;
     }
+    setStatusMsg(null);
     setTestCases(testCases.filter((_, i) => i !== index));
   };
 
@@ -260,7 +293,11 @@ export default function AdminPage() {
       };
 
       await api.createProblem(payload);
-      setStatusMsg({ type: 'success', text: `“${title.trim()}” is live in the problem set.` });
+      setStatusMsg({
+        type: 'success',
+        text: `“${title.trim()}” is live in the problem set.`,
+        slug: slug.trim(),
+      });
 
       await loadProblems();
 
@@ -275,16 +312,25 @@ export default function AdminPage() {
     }
   };
 
-  const handleDeleteProblem = async (id: string, probTitle: string) => {
-    if (!window.confirm(`Delete “${probTitle}”? Its submissions and test cases go with it.`)) {
-      return;
-    }
+  const handleDeleteProblem = async () => {
+    if (!deleteTarget) return;
 
     try {
-      await api.deleteProblem(id);
-      setProblems(problems.filter((p) => p.id !== id));
-    } catch (err: any) {
-      window.alert('Could not delete this problem: ' + err.message);
+      setDeleting(true);
+      await api.deleteProblem(deleteTarget.id);
+      setProblems((previous) => previous.filter((problem) => problem.id !== deleteTarget.id));
+      setStatusMsg({
+        type: 'success',
+        text: `“${deleteTarget.title}” was deleted from the problem set.`,
+      });
+      setDeleteTarget(null);
+    } catch (error: any) {
+      setStatusMsg({
+        type: 'error',
+        text: error?.message || 'Could not delete this problem. Try again.',
+      });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -300,6 +346,48 @@ export default function AdminPage() {
     </div>
   );
 
+  if (!authReady) {
+    return (
+      <div className="w-full flex-1">
+        <div className="shell page">
+          <Skeleton className="h-9 w-52" />
+          <Skeleton className="h-4 w-96 max-w-full" />
+          <Skeleton className="h-96 rounded-lg" />
+        </div>
+      </div>
+    );
+  }
+
+  if (signedOut) {
+    return (
+      <AuthRequired
+        title="Sign in to open the question studio"
+        description="The studio is limited to trainer and placement-cell accounts."
+      />
+    );
+  }
+
+  if (!trainerAllowed) {
+    return (
+      <div className="w-full flex-1">
+        <div className="shell page">
+          <div className="card">
+            <EmptyState
+              icon={ShieldCheck}
+              title="Trainer access only"
+              sub="Your account can browse and solve problems, but only trainer accounts can author or delete questions."
+              action={
+                <LinkButton href="/problems" size="sm">
+                  Back to the problem set
+                </LinkButton>
+              }
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full flex-1">
       <div className="shell page">
@@ -308,19 +396,35 @@ export default function AdminPage() {
           sub="Author placement round questions with a clean method signature, sample cases for the console, and hidden cases that only run on submission."
           actions={
             <>
-              <div className="seg">
+              <div role="tablist" aria-label="Studio sections" className="seg">
                 <button
+                  type="button"
+                  id="studio-tab-create"
+                  role="tab"
+                  aria-selected={activeTab === 'create'}
+                  aria-controls="studio-panel"
+                  tabIndex={activeTab === 'create' ? 0 : -1}
                   onClick={() => setActiveTab('create')}
-                  aria-pressed={activeTab === 'create'}
-                  className={cn('seg-btn flex items-center gap-1.5', activeTab === 'create' && 'seg-btn-on')}
+                  className={cn(
+                    'seg-btn flex items-center gap-1.5',
+                    activeTab === 'create' && 'seg-btn-on'
+                  )}
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden />
                   New question
                 </button>
                 <button
+                  type="button"
+                  id="studio-tab-manage"
+                  role="tab"
+                  aria-selected={activeTab === 'manage'}
+                  aria-controls="studio-panel"
+                  tabIndex={activeTab === 'manage' ? 0 : -1}
                   onClick={() => setActiveTab('manage')}
-                  aria-pressed={activeTab === 'manage'}
-                  className={cn('seg-btn flex items-center gap-1.5', activeTab === 'manage' && 'seg-btn-on')}
+                  className={cn(
+                    'seg-btn flex items-center gap-1.5',
+                    activeTab === 'manage' && 'seg-btn-on'
+                  )}
                 >
                   <Layers className="h-3.5 w-3.5" aria-hidden />
                   All questions ({problems.length})
@@ -330,7 +434,7 @@ export default function AdminPage() {
               <Link href="/problems" className={buttonClass({ size: 'sm' })}>
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 Solve as a student
-                <ExternalLink className="h-3 w-3 text-fg-4" aria-hidden />
+                <ExternalLink className="h-3 w-3 text-fg-3" aria-hidden />
               </Link>
             </>
           }
@@ -341,28 +445,35 @@ export default function AdminPage() {
             tone={statusMsg.type === 'success' ? 'ok' : 'err'}
             icon={statusMsg.type === 'success' ? CheckCircle2 : AlertCircle}
             action={
-              statusMsg.type === 'success' && slug ? (
-                <Link
-                  href={`/problems/${slug}`}
-                  className="underline underline-offset-2 hover:opacity-80"
-                >
-                  Open in the workspace
-                </Link>
-              ) : (
+              <div className="flex items-center gap-3">
+                {statusMsg.type === 'success' && statusMsg.slug ? (
+                  <Link
+                    href={`/problems/${statusMsg.slug}`}
+                    className="whitespace-nowrap underline underline-offset-2 hover:opacity-80"
+                  >
+                    Open in the workspace
+                  </Link>
+                ) : null}
                 <button
+                  type="button"
                   onClick={() => setStatusMsg(null)}
-                  aria-label="Dismiss"
+                  aria-label="Dismiss message"
                   className="opacity-70 hover:opacity-100"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" aria-hidden />
                 </button>
-              )
+              </div>
             }
           >
             {statusMsg.text}
           </Notice>
         )}
 
+        <div
+          id="studio-panel"
+          role="tabpanel"
+          aria-labelledby={`studio-tab-${activeTab}`}
+        >
         {activeTab === 'create' ? (
           <form onSubmit={handlePublish} className="grid gap-5 lg:grid-cols-12">
             {/* ---------------------------------------------------- left column */}
@@ -456,14 +567,14 @@ export default function AdminPage() {
                       {companyTags.map((tag) => (
                         <span
                           key={tag}
-                          className="inline-flex items-center gap-1 rounded-sm border border-mark/30 bg-mark/10 px-2 py-0.5 text-xs font-medium text-mark"
+                          className="inline-flex items-center gap-1 rounded-sm border border-mark/40 bg-mark/15 px-2 py-0.5 text-xs font-medium text-mark-bright"
                         >
                           {tag}
                           <button
                             type="button"
                             onClick={() => removeTag(tag)}
                             aria-label={`Remove ${tag}`}
-                            className="text-mark/70 transition-colors hover:text-hard"
+                            className="text-mark-bright/80 transition-colors hover:text-hard"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -824,7 +935,11 @@ export default function AdminPage() {
                   ({problems.length})
                 </span>
               </h2>
-              <button onClick={loadProblems} className={buttonClass({ size: 'sm' })}>
+              <button
+                type="button"
+                onClick={loadProblems}
+                className={buttonClass({ size: 'sm' })}
+              >
                 <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} aria-hidden />
                 Refresh
               </button>
@@ -848,101 +963,186 @@ export default function AdminPage() {
                 }
               />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="table min-w-[820px]">
-                  <thead className="thead">
-                    <tr>
-                      <th scope="col">Question</th>
-                      <th scope="col" className="w-32 text-center">
-                        Difficulty
-                      </th>
-                      <th scope="col" className="w-44">
-                        Pattern
-                      </th>
-                      <th scope="col" className="w-64">
-                        Drives
-                      </th>
-                      <th scope="col" className="w-28 text-right">
-                        Acceptance
-                      </th>
-                      <th scope="col" className="w-28 text-right">
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="tbody">
-                    {problems.map((prob) => (
-                      <tr key={prob.id}>
-                        <td className="td">
+              <>
+                {/* Mobile question list */}
+                <ul className="divide-y divide-line-soft md:hidden">
+                  {problems.map((prob) => (
+                    <li key={prob.id} className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
                           <Link
                             href={`/problems/${prob.slug}`}
-                            className="text-[15px] font-medium text-white transition-colors hover:text-mark"
+                            className="text-[15px] font-medium leading-snug text-white transition-colors hover:text-mark-bright"
                           >
                             {prob.title}
                           </Link>
-                          <div className="mt-0.5 font-mono text-xs text-fg-4">
-                            /problems/{prob.slug}
-                          </div>
-                        </td>
+                          <p className="mt-1 font-mono text-xs text-fg-3">/problems/{prob.slug}</p>
+                        </div>
+                        <DifficultyBadge difficulty={prob.difficulty} className="shrink-0" />
+                      </div>
 
-                        <td className="td text-center">
-                          <DifficultyBadge
-                            difficulty={prob.difficulty}
-                            className="min-w-[70px] justify-center"
-                          />
-                        </td>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-fg-3">{prob.category}</span>
+                        {prob.acceptanceRate != null ? (
+                          <>
+                            <span className="h-3 w-px bg-line" aria-hidden />
+                            <span className="text-xs tabular-nums text-fg-3">
+                              {prob.acceptanceRate}% acceptance
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
 
-                        <td className="td text-sm text-fg-2">{prob.category}</td>
+                      {(prob.companyTags || []).length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {(prob.companyTags || []).slice(0, 4).map((tag: string) => (
+                            <Tag key={tag}>{tag}</Tag>
+                          ))}
+                          {(prob.companyTags || []).length > 4 ? (
+                            <span className="self-center text-2xs text-fg-3">
+                              +{(prob.companyTags || []).length - 4} more
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
 
-                        <td className="td">
-                          <div className="flex flex-wrap gap-1">
-                            {(prob.companyTags || []).slice(0, 3).map((tag: string) => (
-                              <span key={tag} className="tag">
-                                {tag}
-                              </span>
-                            ))}
-                            {(prob.companyTags || []).length > 3 && (
-                              <span className="self-center text-xs text-fg-4">
-                                +{(prob.companyTags || []).length - 3}
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                      <div className="mt-3 flex items-center gap-2">
+                        <Link
+                          href={`/problems/${prob.slug}`}
+                          aria-label={`Open ${prob.title} in the workspace`}
+                          className="btn btn-secondary btn-sm"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                          Open
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget({ id: prob.id, title: prob.title })}
+                          aria-label={`Delete ${prob.title}`}
+                          className="btn btn-danger btn-sm"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
 
-                        <td className="td num text-right text-sm text-fg-2">
-                          {prob.acceptanceRate}%
-                        </td>
+                {/* Desktop question table */}
+                <div className="hidden md:block">
+                  <table className="table">
+                    <thead className="thead">
+                      <tr>
+                        <th scope="col">Question</th>
+                        <th scope="col" className="w-28 text-center">
+                          Difficulty
+                        </th>
+                        <th scope="col" className="hidden w-44 lg:table-cell">
+                          Pattern
+                        </th>
+                        <th scope="col" className="hidden w-56 xl:table-cell">
+                          Drives
+                        </th>
+                        <th scope="col" className="hidden w-28 text-right xl:table-cell">
+                          Acceptance
+                        </th>
+                        <th scope="col" className="w-28 text-right">
+                          <span className="sr-only">Actions</span>
+                        </th>
+                      </tr>
+                    </thead>
 
-                        <td className="td text-right">
-                          <div className="flex items-center justify-end gap-2">
+                    <tbody className="tbody">
+                      {problems.map((prob) => (
+                        <tr key={prob.id}>
+                          <td className="td">
                             <Link
                               href={`/problems/${prob.slug}`}
-                              title="Open in the workspace"
-                              aria-label={`Open ${prob.title} in the workspace`}
-                              className="btn btn-sm btn-secondary w-8 px-0"
+                              className="text-[15px] font-medium text-white transition-colors hover:text-mark-bright"
                             >
-                              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                              {prob.title}
                             </Link>
-                            <button
-                              onClick={() => handleDeleteProblem(prob.id, prob.title)}
-                              title="Delete question"
-                              aria-label={`Delete ${prob.title}`}
-                              className="btn btn-sm btn-danger w-8 px-0"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            <div className="mt-0.5 font-mono text-xs text-fg-3">
+                              /problems/{prob.slug}
+                            </div>
+                          </td>
+
+                          <td className="td text-center">
+                            <DifficultyBadge
+                              difficulty={prob.difficulty}
+                              className="min-w-[70px] justify-center"
+                            />
+                          </td>
+
+                          <td className="td hidden text-sm text-fg-2 lg:table-cell">
+                            {prob.category}
+                          </td>
+
+                          <td className="td hidden xl:table-cell">
+                            <div className="flex flex-wrap gap-1">
+                              {(prob.companyTags || []).slice(0, 3).map((tag: string) => (
+                                <Tag key={tag}>{tag}</Tag>
+                              ))}
+                              {(prob.companyTags || []).length > 3 ? (
+                                <span className="self-center text-2xs text-fg-3">
+                                  +{(prob.companyTags || []).length - 3}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+
+                          <td className="td num hidden text-right text-sm text-fg-2 xl:table-cell">
+                            {prob.acceptanceRate}%
+                          </td>
+
+                          <td className="td text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/problems/${prob.slug}`}
+                                aria-label={`Open ${prob.title} in the workspace`}
+                                className="btn btn-sm btn-secondary w-9 px-0"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDeleteTarget({ id: prob.id, title: prob.title })
+                                }
+                                aria-label={`Delete ${prob.title}`}
+                                className="btn btn-sm btn-danger w-9 px-0"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </section>
         )}
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete this question?"
+        description={
+          deleteTarget
+            ? `“${deleteTarget.title}” and its test cases and submissions will be removed. This cannot be undone.`
+            : undefined
+        }
+        confirmLabel="Delete question"
+        tone="danger"
+        busy={deleting}
+        onConfirm={handleDeleteProblem}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

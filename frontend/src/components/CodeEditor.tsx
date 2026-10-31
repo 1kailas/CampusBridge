@@ -16,6 +16,13 @@ interface CodeEditorProps {
   readOnly?: boolean;
 }
 
+const PLACEHOLDERS: Record<string, string> = {
+  python: '# Write your solution here...',
+  cpp: '// Write your solution here...',
+  java: '// Write your solution here...',
+  javascript: '// Write your solution here...',
+};
+
 export default function CodeEditor({
   language,
   value,
@@ -58,7 +65,48 @@ export default function CodeEditor({
     return 'plaintext';
   };
 
-  const lineCount = (value || '').split('\n').length;
+  const defineTheme = (monaco: any) => {
+    monaco.editor.defineTheme('campusbridge', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '8B99B4', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'A5B4FC' },
+        { token: 'string', foreground: '6EE7B7' },
+        { token: 'number', foreground: 'FBBF24' },
+        { token: 'type', foreground: '67E8F9' },
+        { token: 'function', foreground: 'C4B5FD' },
+        { token: 'variable', foreground: 'E8EDF8' },
+        { token: 'operator', foreground: 'B6C2D9' },
+      ],
+      colors: {
+        'editor.background': '#050914',
+        'editor.foreground': '#E8EDF8',
+        'editorLineNumber.foreground': '#3B4A66',
+        'editorLineNumber.activeForeground': '#A7B5D0',
+        'editor.lineHighlightBackground': '#0A1322',
+        'editor.selectionBackground': '#263B64',
+        'editor.inactiveSelectionBackground': '#182947',
+        'editorCursor.foreground': '#A5B4FC',
+        'editorIndentGuide.background1': '#152036',
+        'editorIndentGuide.activeBackground1': '#2B3D5E',
+        'editorWidget.background': '#0C1424',
+        'editorWidget.border': '#1D2A44',
+        'editorSuggestWidget.background': '#0C1424',
+        'editorSuggestWidget.border': '#1D2A44',
+        'editorSuggestWidget.selectedBackground': '#1C2C48',
+        'editorHoverWidget.background': '#0C1424',
+        'editorHoverWidget.border': '#1D2A44',
+        'editorBracketMatch.background': '#1C2C48',
+        'editorBracketMatch.border': '#6366F1',
+        'scrollbarSlider.background': '#2A3D6155',
+        'scrollbarSlider.hoverBackground': '#3B527D88',
+        'scrollbarSlider.activeBackground': '#3B527D',
+      },
+    });
+  };
+
+  const lineCount = Math.max((value || '').split('\n').length, 1);
 
   return (
     <div className={`relative h-full w-full bg-ink-950 font-mono text-[13px] ${className || ''}`}>
@@ -66,7 +114,8 @@ export default function CodeEditor({
         <div className={`h-full w-full ${monacoReady ? 'block' : 'hidden'}`}>
           <MonacoEditor
             height="100%"
-            theme="vs-dark"
+            theme="campusbridge"
+            beforeMount={defineTheme}
             language={getMonacoLang(language)}
             value={value}
             onChange={onChange}
@@ -74,16 +123,23 @@ export default function CodeEditor({
             options={{
               minimap: { enabled: false },
               fontSize: 14,
+              lineHeight: 24,
               lineNumbers: 'on',
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 4,
               readOnly,
-              fontFamily: "var(--font-plex-mono), 'Fira Code', 'Courier New', monospace",
+              padding: { top: 12, bottom: 12 },
+              fontFamily: "var(--font-mono), 'JetBrains Mono', ui-monospace, monospace",
               renderLineHighlight: 'line',
               contextmenu: true,
               smoothScrolling: false,
               cursorBlinking: 'smooth',
+              cursorSmoothCaretAnimation: 'on',
+              folding: true,
+              guides: { indentation: true },
+              overviewRulerBorder: false,
+              scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
             }}
           />
         </div>
@@ -92,7 +148,7 @@ export default function CodeEditor({
       {(!monacoReady || editorError) && (
         <div className="flex h-full w-full overflow-hidden bg-ink-950">
           {/* Line numbers gutter */}
-          <div className="select-none py-3 pl-3 pr-2 text-right text-xs text-fg-4/60 border-r border-line/40">
+          <div className="select-none border-r border-line/50 py-3 pl-3 pr-2 text-right text-xs text-fg-4/60">
             {Array.from({ length: Math.max(lineCount, 15) }, (_, i) => (
               <div key={i + 1} className="leading-[1.625rem]">
                 {i + 1}
@@ -113,7 +169,7 @@ export default function CodeEditor({
               autoComplete="off"
               autoCorrect="off"
               className="h-full w-full resize-none bg-transparent p-3 font-mono text-sm leading-[1.625rem] text-fg focus:outline-none"
-              placeholder="# Write your solution here..."
+              placeholder={PLACEHOLDERS[language] || '// Write your solution here...'}
             />
           </div>
         </div>

@@ -1,12 +1,23 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { GraduationCap, ListOrdered, Trophy, Users, SearchX } from 'lucide-react';
-import { EmptyState, LoadingState, PageHeader, SearchInput } from '@/components/ui';
-
-const MEDALS = ['🥇', '🥈', '🥉'];
+import {
+  GraduationCap,
+  ListOrdered,
+  SearchX,
+  Trophy,
+  TriangleAlert,
+  Users,
+} from 'lucide-react';
+import {
+  EmptyState,
+  PageHeader,
+  SearchInput,
+  Stat,
+  TableSkeleton,
+} from '@/components/ui';
 
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -18,113 +29,128 @@ export default function LeaderboardPage() {
     api
       .getLeaderboard()
       .then((data) => setLeaderboard(data || []))
-      .catch((e) => {
-        console.error(e);
+      .catch((error) => {
+        console.error(error);
         setFailed(true);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  const q = query.trim().toLowerCase();
-  const filtered = q
-    ? leaderboard.filter(
-        (item) =>
-          (item.name || '').toLowerCase().includes(q) ||
-          (item.college || '').toLowerCase().includes(q) ||
-          (item.targetCompany || '').toLowerCase().includes(q)
-      )
-    : leaderboard;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const rows = q
+      ? leaderboard.filter(
+          (item) =>
+            (item.name || '').toLowerCase().includes(q) ||
+            (item.college || '').toLowerCase().includes(q) ||
+            (item.targetCompany || '').toLowerCase().includes(q)
+        )
+      : leaderboard;
 
-  const podium = leaderboard.slice(0, 3);
+    return rows.map((item) => ({
+      ...item,
+      rank: leaderboard.findIndex((entry) => entry.id === item.id) + 1,
+    }));
+  }, [leaderboard, query]);
+
+  const totalSolved = leaderboard.reduce(
+    (sum, item) => sum + Number(item.problemsSolved || 0),
+    0
+  );
+  const topScore = leaderboard[0]?.score ?? 0;
 
   return (
     <div className="w-full flex-1">
       <div className="shell page">
         <PageHeader
           title="Leaderboard"
-          sub="Ranked on problems solved and mock-test marks together — the two things a recruiting panel actually sees."
+          sub="Ranked on problems solved and mock-test marks together — the two signals a recruiting panel actually reviews."
           actions={
             <div className="w-full md:w-80">
+              <label className="sr-only" htmlFor="leaderboard-search">
+                Search the leaderboard
+              </label>
               <SearchInput
+                id="leaderboard-search"
                 value={query}
                 onChange={setQuery}
-                placeholder="Search name, college or target"
-                aria-label="Search the leaderboard"
+                placeholder="Search name, college, or target"
               />
             </div>
           }
         />
 
         {loading ? (
-          <LoadingState label="Loading leaderboard…" />
+          <TableSkeleton rows={8} />
         ) : failed ? (
-          <EmptyState
-            icon={Users}
-            title="Could not load the leaderboard"
-            sub="The API at http://localhost:4000 is not responding. Start the backend, then reload this page."
-          />
+          <div className="card">
+            <EmptyState
+              icon={TriangleAlert}
+              title="Could not load the leaderboard"
+              sub="The API is unreachable. Check that the backend service is running, then reload this page."
+            />
+          </div>
         ) : leaderboard.length === 0 ? (
-          <EmptyState
-            icon={Trophy}
-            title="No candidates ranked yet"
-            sub="Rankings appear once students have solved problems or sat a mock test."
-          />
+          <div className="card">
+            <EmptyState
+              icon={Trophy}
+              title="No candidates ranked yet"
+              sub="Rankings appear once students have solved problems or completed a mock test."
+            />
+          </div>
         ) : (
           <>
-            {/* -------------------------------------------------------- podium */}
-            <section aria-label="Top three" className="grid gap-4 md:grid-cols-3">
-              {podium.map((person, idx) => {
-                const rank = idx + 1;
-                const first = rank === 1;
-                return (
-                  <div
-                    key={person.id}
-                    className={cn(
-                      'card flex flex-col p-5 text-center',
-                      first && 'order-first border-mark/40 md:order-2 md:-mt-2',
-                      !first && rank === 2 && 'md:order-1',
-                      !first && rank === 3 && 'md:order-3'
-                    )}
-                  >
-                    <span className="mx-auto grid h-11 w-11 place-items-center rounded-md border border-line bg-ink-750 text-xl leading-none">
-                      {MEDALS[idx]}
-                    </span>
-
-                    <span
-                      className={cn('badge mt-3 self-center', first ? 'badge-mark' : 'badge-neutral')}
-                    >
-                      Rank {rank}
-                    </span>
-
-                    <h2 className="mt-2.5 text-base font-semibold text-white">{person.name}</h2>
-                    <p className="mt-0.5 flex items-center justify-center gap-1.5 text-[13px] text-fg-3">
-                      <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      <span className="truncate">{person.college}</span>
-                    </p>
-
-                    <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line text-left">
-                      <div className="bg-ink-750 px-3 py-2.5">
-                        <dt className="stat-label">Solved</dt>
-                        <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-white">
-                          {person.problemsSolved}
-                        </dd>
-                      </div>
-                      <div className="bg-ink-750 px-3 py-2.5">
-                        <dt className="stat-label">Score</dt>
-                        <dd className="mt-0.5 text-[15px] font-semibold tabular-nums text-mark">
-                          {person.score}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-                );
-              })}
+            <section
+              aria-label="Leaderboard summary"
+              className="card grid grid-cols-3 divide-x divide-line overflow-hidden sm:hidden"
+            >
+              <div className="min-w-0 px-3 py-3.5 text-center">
+                <div className="text-lg font-semibold leading-none tabular-nums text-white">
+                  {leaderboard.length}
+                </div>
+                <div className="mt-1.5 text-[11px] leading-tight text-fg-3">Candidates</div>
+              </div>
+              <div className="min-w-0 px-3 py-3.5 text-center">
+                <div className="text-lg font-semibold leading-none tabular-nums text-white">
+                  {totalSolved}
+                </div>
+                <div className="mt-1.5 text-[11px] leading-tight text-fg-3">Solved</div>
+              </div>
+              <div className="min-w-0 px-3 py-3.5 text-center">
+                <div className="text-lg font-semibold leading-none tabular-nums text-white">
+                  {topScore}
+                </div>
+                <div className="mt-1.5 text-[11px] leading-tight text-fg-3">Top score</div>
+              </div>
             </section>
 
-            {/* --------------------------------------------------------- table */}
-            <section className="card overflow-hidden">
-              <div className="flex items-center justify-between gap-4 border-b border-line px-5 py-3.5">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
+            <section
+              aria-label="Leaderboard summary"
+              className="hidden gap-3 sm:grid sm:grid-cols-3"
+            >
+              <Stat
+                label="Candidates ranked"
+                value={leaderboard.length}
+                note="Students with placement activity"
+              />
+              <Stat
+                label="Problems solved"
+                value={totalSolved}
+                note="Accepted submissions across the cohort"
+              />
+              <Stat
+                label="Leading score"
+                value={topScore}
+                note="Problems and mock marks combined"
+              />
+            </section>
+
+            <section className="card overflow-hidden" aria-labelledby="ranking-heading">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
+                <h2
+                  id="ranking-heading"
+                  className="flex items-center gap-2 text-sm font-semibold text-white"
+                >
                   <ListOrdered className="h-4 w-4 text-fg-3" aria-hidden />
                   Full ranking
                 </h2>
@@ -133,85 +159,166 @@ export default function LeaderboardPage() {
                 </span>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="table min-w-[720px]">
-                  <thead className="thead">
-                    <tr>
-                      <th scope="col" className="w-20 text-center">
-                        Rank
-                      </th>
-                      <th scope="col">Candidate</th>
-                      <th scope="col">College</th>
-                      <th scope="col" className="w-32 text-right">
-                        Solved
-                      </th>
-                      <th scope="col" className="w-32 text-right">
-                        Mock marks
-                      </th>
-                      <th scope="col" className="w-32 text-right">
-                        Composite
-                      </th>
-                    </tr>
-                  </thead>
+              {filtered.length === 0 ? (
+                <EmptyState
+                  icon={SearchX}
+                  title="No candidate matches that search"
+                  sub="Check the spelling, or clear the search to see the full ranking."
+                  action={
+                    <button
+                      type="button"
+                      onClick={() => setQuery('')}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      Clear search
+                    </button>
+                  }
+                />
+              ) : (
+                <>
+                  {/* Mobile list */}
+                  <ul className="divide-y divide-line-soft md:hidden">
+                    {filtered.map((person) => (
+                      <li key={person.id} className="flex items-start gap-3 p-4">
+                        <RankMark rank={person.rank} />
 
-                  <tbody className="tbody">
-                    {filtered.length === 0 ? (
-                      <tr>
-                        <td colSpan={6}>
-                          <EmptyState
-                            icon={SearchX}
-                            title="No candidate matches that search"
-                            sub="Check the spelling, or clear the search to see the full ranking."
-                          />
-                        </td>
-                      </tr>
-                    ) : (
-                      filtered.map((item) => {
-                        const rank = leaderboard.indexOf(item) + 1;
-                        return (
-                          <tr key={item.id}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <h3 className="min-w-0 text-[15px] font-medium leading-snug text-white">
+                              {person.name}
+                            </h3>
+                            <span className="shrink-0 text-[15px] font-semibold tabular-nums text-white">
+                              {person.score}
+                            </span>
+                          </div>
+
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-fg-3">
+                            <GraduationCap className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            <span className="truncate">{person.college}</span>
+                          </p>
+
+                          <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-3">
+                            <div className="flex items-center gap-1">
+                              <dt>Solved</dt>
+                              <dd className="font-semibold tabular-nums text-easy">
+                                {person.problemsSolved}
+                              </dd>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <dt>Mock marks</dt>
+                              <dd className="font-semibold tabular-nums text-fg-2">
+                                {person.assessmentScore}
+                              </dd>
+                            </div>
+                            {person.targetCompany ? (
+                              <div className="flex min-w-0 items-center gap-1">
+                                <dt>Target</dt>
+                                <dd className="truncate text-fg-2">{person.targetCompany}</dd>
+                              </div>
+                            ) : null}
+                          </dl>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Desktop table */}
+                  <div className="hidden md:block">
+                    <table className="table">
+                      <thead className="thead">
+                        <tr>
+                          <th scope="col" className="w-16 text-center">
+                            Rank
+                          </th>
+                          <th scope="col">Candidate</th>
+                          <th scope="col" className="hidden w-56 xl:table-cell">
+                            College
+                          </th>
+                          <th scope="col" className="w-24 text-right">
+                            Solved
+                          </th>
+                          <th scope="col" className="hidden w-28 text-right lg:table-cell">
+                            Mock marks
+                          </th>
+                          <th scope="col" className="w-28 text-right">
+                            Composite
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="tbody">
+                        {filtered.map((person) => (
+                          <tr key={person.id}>
                             <td className="td text-center">
-                              <span
-                                className={cn(
-                                  'inline-flex h-7 min-w-[28px] items-center justify-center rounded-sm border px-2 text-[13px] font-semibold tabular-nums',
-                                  rank <= 3
-                                    ? 'border-mark/35 bg-mark/10 text-mark'
-                                    : 'border-line bg-ink-750 text-fg-3'
-                                )}
-                              >
-                                {rank}
-                              </span>
+                              <RankMark rank={person.rank} />
                             </td>
 
-                            <td className="td text-[15px] font-medium text-white">{item.name}</td>
-
                             <td className="td">
+                              <span className="text-[15px] font-medium text-white">
+                                {person.name}
+                              </span>
+                              {person.targetCompany ? (
+                                <span className="mt-0.5 block truncate text-xs text-fg-3">
+                                  Aiming at {person.targetCompany}
+                                </span>
+                              ) : null}
+                            </td>
+
+                            <td className="td hidden xl:table-cell">
                               <span className="flex items-center gap-1.5 text-sm text-fg-2">
-                                <GraduationCap className="h-3.5 w-3.5 shrink-0 text-fg-4" aria-hidden />
-                                <span className="truncate">{item.college}</span>
+                                <GraduationCap
+                                  className="h-3.5 w-3.5 shrink-0 text-fg-4"
+                                  aria-hidden
+                                />
+                                <span className="truncate">{person.college}</span>
                               </span>
                             </td>
 
                             <td className="td num text-right text-[15px] font-semibold text-easy">
-                              {item.problemsSolved}
+                              {person.problemsSolved}
                             </td>
-                            <td className="td num text-right text-sm text-fg-2">
-                              {item.assessmentScore}
+
+                            <td className="td num hidden text-right text-sm text-fg-2 lg:table-cell">
+                              {person.assessmentScore}
                             </td>
+
                             <td className="td num text-right text-[15px] font-semibold text-white">
-                              {item.score}
+                              {person.score}
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </section>
+
+            <p className="flex items-center gap-1.5 text-xs text-fg-3">
+              <Users className="h-3.5 w-3.5" aria-hidden />
+              Trainer and placement-cell accounts are excluded from the ranking.
+            </p>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function RankMark({ rank }: { rank: number }) {
+  const top = rank <= 3;
+
+  return (
+    <span
+      className={cn(
+        'inline-flex h-7 min-w-[28px] items-center justify-center rounded border px-2 text-[13px] font-semibold tabular-nums',
+        top
+          ? 'border-mark/35 bg-mark/10 text-mark-bright'
+          : 'border-line bg-ink-750 text-fg-3'
+      )}
+      aria-label={`Rank ${rank}`}
+    >
+      {rank}
+    </span>
   );
 }

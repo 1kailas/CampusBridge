@@ -1,12 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import confetti from 'canvas-confetti';
 import {
   ArrowLeft,
   BookOpen,
@@ -21,24 +19,32 @@ import {
   FileCode2,
   History,
   Lightbulb,
+  Loader2,
   Play,
   RotateCcw,
   Send,
   StickyNote,
   Terminal,
+  TriangleAlert,
   XCircle,
 } from 'lucide-react';
 import {
   Badge,
+  Button,
+  ConfirmDialog,
   DifficultyBadge,
   EmptyState,
-  LoadingState,
+  Notice,
+  Tag,
   buttonClass,
 } from '@/components/ui';
-
+import AuthRequired from '@/components/AuthRequired';
+import Markdown from '@/components/Markdown';
 import CodeEditor from '@/components/CodeEditor';
 
 type LeftTab = 'description' | 'solution' | 'submissions' | 'notes';
+type Language = 'python' | 'cpp' | 'java' | 'javascript';
+type PaneTab = 'problem' | 'code';
 
 const STATUS_TEXT: Record<string, string> = {
   ACCEPTED: 'Accepted',
@@ -48,6 +54,33 @@ const STATUS_TEXT: Record<string, string> = {
   RUNTIME_ERROR: 'Runtime error',
 };
 
+const LANGUAGES: { value: Language; label: string }[] = [
+  { value: 'python', label: 'Python 3' },
+  { value: 'cpp', label: 'C++ 17' },
+  { value: 'java', label: 'Java 17' },
+  { value: 'javascript', label: 'JavaScript' },
+];
+
+const LEFT_TABS: { key: LeftTab; label: string; icon: React.ElementType }[] = [
+  { key: 'description', label: 'Description', icon: FileCode2 },
+  { key: 'solution', label: 'Editorial', icon: BookOpen },
+  { key: 'submissions', label: 'Submissions', icon: History },
+  { key: 'notes', label: 'Notes', icon: StickyNote },
+];
+
+function parseHints(raw: any): string[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [raw];
+    } catch {
+      return [raw];
+    }
+  }
+  return [];
+}
+
 export default function ProblemWorkspacePage() {
   const params = useParams();
   const router = useRouter();
@@ -56,43 +89,48 @@ export default function ProblemWorkspacePage() {
   const [problem, setProblem] = useState<any>(null);
   const [allProblems, setAllProblems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [signedOut, setSignedOut] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   const [activeLeftTab, setActiveLeftTab] = useState<LeftTab>('description');
-
-  const [language, setLanguage] = useState<'python' | 'cpp' | 'java' | 'javascript'>('python');
-  const [code, setCode] = useState<string>('');
+  const [language, setLanguage] = useState<Language>('python');
+  const [code, setCode] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
-
   const [splitRatio, setSplitRatio] = useState<'50/50' | '40/60' | '60/40' | 'full'>('50/50');
+  const [mobileTab, setMobileTab] = useState<PaneTab>('problem');
 
   const [consoleOpen, setConsoleOpen] = useState(true);
   const [activeConsoleTab, setActiveConsoleTab] = useState<'testcase' | 'result'>('testcase');
   const [selectedCaseIndex, setSelectedCaseIndex] = useState(0);
   const [customInput, setCustomInput] = useState('');
   const [rawInputMode, setRawInputMode] = useState(false);
-  const [mobileTab, setMobileTab] = useState<'problem' | 'code'>('problem');
 
   const [running, setRunning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [runResult, setRunResult] = useState<any>(null);
   const [submissionResult, setSubmissionResult] = useState<any>(null);
   const [submissionsList, setSubmissionsList] = useState<any[]>([]);
 
   const [noteContent, setNoteContent] = useState('');
-  const [noteSaved, setNoteSaved] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteNotice, setNoteNotice] = useState('');
+  const [noteError, setNoteError] = useState('');
   const [expandedHints, setExpandedHints] = useState<Record<number, boolean>>({});
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   useEffect(() => {
     async function loadProblem() {
+      if (!api.getUser()) {
+        setSignedOut(true);
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        if (!api.getUser()) {
-          try {
-            await api.demoLogin();
-          } catch (e) {
-            // Backend might be warming up or offline
-          }
-        }
+        setFailed(false);
+
         const [data, problemsList] = await Promise.all([
           api.getProblemBySlug(slug),
           api.getProblems(),
@@ -103,82 +141,86 @@ export default function ProblemWorkspacePage() {
         setNoteContent(data.userNote || '');
 
         const savedKey = `campusbridge_code_${slug}_python`;
-        const localSaved = typeof window !== 'undefined' ? localStorage.getItem(savedKey) : null;
+        const localSaved = localStorage.getItem(savedKey);
+        setCode(localSaved ?? data.defaultTemplates?.python ?? '');
 
-        if (localSaved) {
-          setCode(localSaved);
-        } else {
-          const templates = data.defaultTemplates || {};
-          setCode(templates.python || '# Write your solution here\n');
+        if (Array.isArray(data.testCases) && data.testCases.length > 0) {
+          setCustomInput(data.testCases[0].input || '');
         }
 
-        if (data.testCases && data.testCases.length > 0) {
-          setCustomInput(data.testCases[0].input);
-        }
-
-        setLoading(false);
         api
           .getProblemSubmissions(data.id)
-          .then((subs) => setSubmissionsList(subs || []))
+          .then((submissions) => setSubmissionsList(submissions || []))
           .catch(() => {});
-      } catch (err) {
-        console.error('Failed to load problem:', err);
+      } catch (error) {
+        console.error('Failed to load problem:', error);
+        setFailed(true);
+      } finally {
         setLoading(false);
       }
     }
+
     if (slug) loadProblem();
   }, [slug]);
 
-  const handleLanguageChange = (newLang: 'python' | 'cpp' | 'java' | 'javascript') => {
-    setLanguage(newLang);
-    const savedKey = `campusbridge_code_${slug}_${newLang}`;
-    const localSaved = typeof window !== 'undefined' ? localStorage.getItem(savedKey) : null;
+  const handleLanguageChange = (nextLanguage: Language) => {
+    setLanguage(nextLanguage);
+    setActionError('');
 
-    if (localSaved) {
-      setCode(localSaved);
-    } else if (problem?.defaultTemplates?.[newLang]) {
-      setCode(problem.defaultTemplates[newLang]);
+    const savedKey = `campusbridge_code_${slug}_${nextLanguage}`;
+    const localSaved = localStorage.getItem(savedKey);
+
+    setCode(localSaved ?? problem?.defaultTemplates?.[nextLanguage] ?? '');
+  };
+
+  const handleCodeChange = (nextCode: string | undefined) => {
+    const value = nextCode || '';
+    setCode(value);
+    if (slug) {
+      localStorage.setItem(`campusbridge_code_${slug}_${language}`, value);
     }
   };
 
-  const handleCodeChange = (newCode: string | undefined) => {
-    const val = newCode || '';
-    setCode(val);
-    if (typeof window !== 'undefined' && slug) {
-      localStorage.setItem(`campusbridge_code_${slug}_${language}`, val);
-    }
-  };
-
-  const handleResetCode = () => {
+  const resetCode = () => {
     if (!problem?.defaultTemplates?.[language]) return;
-    if (window.confirm('Reset the editor to the starter template? Your current code will be lost.')) {
-      setCode(problem.defaultTemplates[language]);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(`campusbridge_code_${slug}_${language}`);
-      }
-    }
+    setCode(problem.defaultTemplates[language]);
+    localStorage.removeItem(`campusbridge_code_${slug}_${language}`);
+    setConfirmResetOpen(false);
+    setActionError('');
   };
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(true);
+      window.setTimeout(() => setCopiedCode(false), 2000);
+    } catch {
+      setActionError('Your browser blocked clipboard access. Select the code and copy it manually.');
+      setActiveConsoleTab('result');
+      setConsoleOpen(true);
+    }
   };
 
   const handleRunCode = async () => {
     if (!problem) return;
-    try {
-      setRunning(true);
-      setActiveConsoleTab('result');
-      setConsoleOpen(true);
 
+    setRunning(true);
+    setActionError('');
+    setRunResult(null);
+    setSubmissionResult(null);
+    setActiveConsoleTab('result');
+    setConsoleOpen(true);
+
+    try {
       const inputToSend = rawInputMode ? customInput.trim() : undefined;
-      const res = await api.runCode(problem.id, language, code, inputToSend);
-      setRunResult(res);
-      setSubmissionResult(null);
+      const result = await api.runCode(problem.id, language, code, inputToSend);
+      setRunResult(result);
       setSelectedCaseIndex(0);
-    } catch (err: any) {
-      window.alert('Execution failed: ' + (err.message || 'unknown error'));
+    } catch (error: any) {
+      setActionError(
+        error?.message ||
+          'Code execution failed. Check that the judging service is running, then try again.'
+      );
     } finally {
       setRunning(false);
     }
@@ -186,25 +228,40 @@ export default function ProblemWorkspacePage() {
 
   const handleSubmitCode = async () => {
     if (!problem) return;
-    try {
-      setSubmitting(true);
-      setActiveConsoleTab('result');
-      setConsoleOpen(true);
 
-      const res = await api.submitCode(problem.id, language, code);
-      setSubmissionResult(res);
-      setRunResult(null);
+    setSubmitting(true);
+    setActionError('');
+    setRunResult(null);
+    setSubmissionResult(null);
+    setActiveConsoleTab('result');
+    setConsoleOpen(true);
+
+    try {
+      const result = await api.submitCode(problem.id, language, code);
+      setSubmissionResult(result);
       setSelectedCaseIndex(0);
 
-      if (res.status === 'ACCEPTED') {
-        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-        setProblem((prev: any) => ({ ...prev, isSolved: true }));
+      if (result.status === 'ACCEPTED') {
+        setProblem((previous: any) => ({ ...previous, isSolved: true }));
+        try {
+          const confetti = (await import('canvas-confetti')).default;
+          confetti({
+            particleCount: 90,
+            spread: 70,
+            origin: { y: 0.6 },
+          });
+        } catch {
+          // ignore
+        }
       }
 
-      const subs = await api.getProblemSubmissions(problem.id);
-      setSubmissionsList(subs || []);
-    } catch (err: any) {
-      window.alert('Submission failed: ' + (err.message || 'unknown error'));
+      const submissions = await api.getProblemSubmissions(problem.id);
+      setSubmissionsList(submissions || []);
+    } catch (error: any) {
+      setActionError(
+        error?.message ||
+          'Submission failed. Check your connection, then submit again.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -212,131 +269,164 @@ export default function ProblemWorkspacePage() {
 
   const handleSaveNote = async () => {
     if (!problem) return;
+
+    setSavingNote(true);
+    setNoteNotice('');
+    setNoteError('');
+
     try {
       await api.saveProblemNote(problem.id, noteContent);
-      setNoteSaved(true);
-      setTimeout(() => setNoteSaved(false), 2000);
+      setNoteNotice('Note saved to your account.');
     } catch {
-      window.alert('Your note could not be saved. Check that the backend is running.');
+      setNoteError('Your note could not be saved. Check that the backend is running, then retry.');
+    } finally {
+      setSavingNote(false);
     }
   };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
         handleSubmitCode();
-      } else if ((e.metaKey || e.ctrlKey) && e.key === "'") {
-        e.preventDefault();
+      } else if ((event.metaKey || event.ctrlKey) && event.key === "'") {
+        event.preventDefault();
         handleRunCode();
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [problem, language, code, customInput]);
+  }, [problem, language, code, customInput, rawInputMode]);
 
-  const getMonacoLang = (lang: string) => {
-    if (lang === 'cpp') return 'cpp';
-    if (lang === 'python') return 'python';
-    if (lang === 'java') return 'java';
-    return 'javascript';
-  };
-
-  const currentIdx = allProblems.findIndex((p) => p.slug === slug);
+  const currentIdx = allProblems.findIndex((entry) => entry.slug === slug);
   const prevProblem = currentIdx > 0 ? allProblems[currentIdx - 1] : null;
   const nextProblem =
     currentIdx >= 0 && currentIdx < allProblems.length - 1 ? allProblems[currentIdx + 1] : null;
 
+  if (signedOut) {
+    return (
+      <AuthRequired
+        title="Sign in to open the coding workspace"
+        description="Run code, submit solutions, and keep notes against your own account."
+      />
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex w-full flex-1 items-center justify-center bg-ink-900">
-        <LoadingState label="Opening the workspace…" />
+        <div className="empty" role="status">
+          <span className="spinner spinner-lg" aria-hidden />
+          <p className="empty-sub">Opening the workspace…</p>
+        </div>
       </div>
     );
   }
 
-  if (!problem) {
+  if (failed || !problem) {
     return (
-      <div className="flex w-full flex-1 items-center justify-center bg-ink-900">
-        <div className="shell py-16">
-          <EmptyState
-            icon={FileCode2}
-            title="Problem not found"
-            sub="This problem may have been removed, or the link is out of date."
-            action={
-              <Link href="/problems" className="btn btn-secondary btn-sm">
-                Back to the problem set
-              </Link>
-            }
-          />
+      <div className="w-full flex-1">
+        <div className="shell page">
+          <div className="card">
+            <EmptyState
+              icon={FileCode2}
+              title="Problem not found"
+              sub="This problem may have been removed, or the link is out of date."
+              action={
+                <Link href="/problems" className="btn btn-secondary btn-sm">
+                  Back to the problem set
+                </Link>
+              }
+            />
+          </div>
         </div>
       </div>
     );
   }
 
   const currentResult = submissionResult || runResult;
+  const resultKind = submissionResult ? 'Submission result' : 'Sample run';
+  const hints = parseHints(problem.hints);
+  const testCases: any[] = Array.isArray(problem.testCases) ? problem.testCases : [];
 
-  const leftWidthClass =
-    splitRatio === 'full'
-      ? 'hidden'
-      : mobileTab === 'code'
-        ? 'hidden lg:flex ' +
-          (splitRatio === '40/60' ? 'lg:w-[40%]' : splitRatio === '60/40' ? 'lg:w-[60%]' : 'lg:w-1/2')
-        : 'w-full ' +
-          (splitRatio === '40/60' ? 'lg:w-[40%]' : splitRatio === '60/40' ? 'lg:w-[60%]' : 'lg:w-1/2');
+  const leftWidth =
+    splitRatio === '40/60'
+      ? 'lg:w-[40%]'
+      : splitRatio === '60/40'
+        ? 'lg:w-[60%]'
+        : 'lg:w-1/2';
 
-  const rightWidthClass =
-    splitRatio === 'full'
-      ? 'w-full'
-      : mobileTab === 'problem'
-        ? 'hidden lg:flex ' +
-          (splitRatio === '40/60' ? 'lg:w-[60%]' : splitRatio === '60/40' ? 'lg:w-[40%]' : 'lg:w-1/2')
-        : 'w-full ' +
-          (splitRatio === '40/60' ? 'lg:w-[60%]' : splitRatio === '60/40' ? 'lg:w-[40%]' : 'lg:w-1/2');
+  const rightWidth =
+    splitRatio === '40/60'
+      ? 'lg:w-[60%]'
+      : splitRatio === '60/40'
+        ? 'lg:w-[40%]'
+        : 'lg:w-1/2';
 
-  const TABS: { key: LeftTab; label: string; icon: React.ElementType }[] = [
-    { key: 'description', label: 'Description', icon: FileCode2 },
-    { key: 'solution', label: 'Editorial', icon: BookOpen },
-    { key: 'submissions', label: 'Submissions', icon: History },
-    { key: 'notes', label: 'Notes', icon: StickyNote },
-  ];
+  const leftClass = cn(
+    'flex flex-col border-line bg-ink-850 lg:border-r',
+    mobileTab === 'problem' ? 'w-full' : 'hidden lg:flex',
+    splitRatio === 'full' ? 'lg:hidden' : leftWidth
+  );
 
-  const tabClass = (active: boolean) =>
-    cn(
-      'relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors duration-150 after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark after:transition-opacity',
-      active ? 'text-white after:opacity-100' : 'text-fg-3 after:opacity-0 hover:text-fg'
-    );
+  const rightClass = cn(
+    'flex flex-col bg-ink-950',
+    mobileTab === 'code' ? 'w-full' : 'hidden lg:flex',
+    splitRatio === 'full' ? 'lg:w-full' : rightWidth
+  );
+
+  const moveLeftTab = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+
+    const current = LEFT_TABS.findIndex((tab) => tab.key === activeLeftTab);
+    let next = current;
+    if (event.key === 'ArrowLeft') next = Math.max(0, current - 1);
+    if (event.key === 'ArrowRight') next = Math.min(LEFT_TABS.length - 1, current + 1);
+    if (event.key === 'Home') next = 0;
+    if (event.key === 'End') next = LEFT_TABS.length - 1;
+
+    setActiveLeftTab(LEFT_TABS[next].key);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`left-tab-${LEFT_TABS[next].key}`)?.focus();
+    });
+  };
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem-1px)] w-full flex-1 flex-col overflow-hidden bg-ink-900">
+    <div className="flex h-[calc(100dvh-4rem-1px)] w-full flex-col overflow-hidden bg-ink-900">
       {/* -------------------------------------------------------- workspace bar */}
       <div className="shrink-0 border-b border-line bg-ink-850">
-        <div className="shell flex h-12 items-center justify-between gap-3">
-          {/* left */}
+        <div className="shell flex h-12 items-center justify-between gap-2 sm:gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <Link
               href="/problems"
+              aria-label="Back to the problem set"
               className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-fg-3 transition-colors hover:text-white"
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
               <span className="hidden sm:inline">Problem set</span>
             </Link>
 
-            <div className="flex shrink-0 items-center border-l border-r border-line px-1">
+            <div className="hidden shrink-0 items-center border-l border-r border-line px-1 lg:flex">
               <button
+                type="button"
                 onClick={() => prevProblem && router.push(`/problems/${prevProblem.slug}`)}
                 disabled={!prevProblem}
-                title={prevProblem ? `Previous: ${prevProblem.title}` : 'No previous problem'}
-                className="rounded-sm p-1 text-fg-3 transition-colors hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                aria-label={
+                  prevProblem ? `Previous problem: ${prevProblem.title}` : 'No previous problem'
+                }
+                className="rounded p-1 text-fg-3 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden />
               </button>
               <button
+                type="button"
                 onClick={() => nextProblem && router.push(`/problems/${nextProblem.slug}`)}
                 disabled={!nextProblem}
-                title={nextProblem ? `Next: ${nextProblem.title}` : 'No next problem'}
-                className="rounded-sm p-1 text-fg-3 transition-colors hover:text-white disabled:opacity-30 disabled:pointer-events-none"
+                aria-label={nextProblem ? `Next problem: ${nextProblem.title}` : 'No next problem'}
+                className="rounded p-1 text-fg-3 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-30"
               >
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </button>
@@ -344,9 +434,12 @@ export default function ProblemWorkspacePage() {
 
             <h1 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-white">
               <span className="truncate">{problem.title}</span>
-              {problem.isSolved && (
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-easy" aria-label="Solved" />
-              )}
+              {problem.isSolved ? (
+                <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-easy">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                  <span className="sr-only">Solved</span>
+                </span>
+              ) : null}
             </h1>
 
             <span className="hidden shrink-0 sm:block">
@@ -354,19 +447,20 @@ export default function ProblemWorkspacePage() {
             </span>
           </div>
 
-          {/* split ratio — desktop */}
-          <div className="seg hidden shrink-0 lg:flex">
-            {(['50/50', '40/60', '60/40'] as const).map((r) => (
+          <div className="seg hidden shrink-0 lg:flex" aria-label="Pane width">
+            {(['50/50', '40/60', '60/40'] as const).map((ratio) => (
               <button
-                key={r}
-                onClick={() => setSplitRatio(r)}
-                aria-pressed={splitRatio === r}
-                className={cn('seg-btn', splitRatio === r && 'seg-btn-on')}
+                key={ratio}
+                type="button"
+                onClick={() => setSplitRatio(ratio)}
+                aria-pressed={splitRatio === ratio}
+                className={cn('seg-btn', splitRatio === ratio && 'seg-btn-on')}
               >
-                {r.replace('/', ':')}
+                {ratio.replace('/', ':')}
               </button>
             ))}
             <button
+              type="button"
               onClick={() => setSplitRatio(splitRatio === 'full' ? '50/50' : 'full')}
               aria-pressed={splitRatio === 'full'}
               className={cn('seg-btn', splitRatio === 'full' && 'seg-btn-on')}
@@ -375,43 +469,28 @@ export default function ProblemWorkspacePage() {
             </button>
           </div>
 
-          {/* mobile pane switch */}
-          <div className="seg shrink-0 lg:hidden">
-            <button
-              onClick={() => setMobileTab('problem')}
-              aria-pressed={mobileTab === 'problem'}
-              className={cn('seg-btn', mobileTab === 'problem' && 'seg-btn-on')}
-            >
-              Problem
-            </button>
-            <button
-              onClick={() => setMobileTab('code')}
-              aria-pressed={mobileTab === 'code'}
-              className={cn('seg-btn', mobileTab === 'code' && 'seg-btn-on')}
-            >
-              Editor
-            </button>
-          </div>
-
-          {/* right actions */}
           <div className="flex shrink-0 items-center gap-1.5">
+            <label className="sr-only" htmlFor="workspace-language">
+              Language
+            </label>
             <select
-              aria-label="Language"
+              id="workspace-language"
               value={language}
-              onChange={(e) => handleLanguageChange(e.target.value as any)}
-              className="select h-8 w-[112px] text-[13px] sm:w-auto"
+              onChange={(event) => handleLanguageChange(event.target.value as Language)}
+              className="select h-8 w-[104px] text-[13px] sm:w-auto"
             >
-              <option value="python">Python 3</option>
-              <option value="cpp">C++ 17</option>
-              <option value="java">Java 25</option>
-              <option value="javascript">JavaScript</option>
+              {LANGUAGES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
             </select>
 
             <button
+              type="button"
               onClick={handleCopyCode}
-              title="Copy code"
               aria-label="Copy code"
-              className="btn btn-sm btn-secondary hidden w-8 px-0 sm:inline-flex"
+              className="btn btn-sm btn-secondary hidden w-8 px-0 lg:inline-flex"
             >
               {copiedCode ? (
                 <Check className="h-3.5 w-3.5 text-easy" aria-hidden />
@@ -421,67 +500,131 @@ export default function ProblemWorkspacePage() {
             </button>
 
             <button
-              onClick={handleResetCode}
-              title="Reset to starter template"
-              aria-label="Reset to starter template"
-              className="btn btn-sm btn-secondary hidden w-8 px-0 sm:inline-flex"
+              type="button"
+              onClick={() => setConfirmResetOpen(true)}
+              disabled={!problem.defaultTemplates?.[language]}
+              aria-label="Reset to the starter template"
+              className="btn btn-sm btn-secondary hidden w-8 px-0 lg:inline-flex"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             </button>
 
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleRunCode}
               disabled={running || submitting}
-              className={buttonClass({ variant: 'secondary', size: 'sm' })}
+              aria-label="Run sample tests"
             >
-              <Play
-                className={cn('h-3.5 w-3.5 fill-current', running && 'animate-slow-pulse text-mark')}
-                aria-hidden
-              />
+              {running ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Play className="h-3.5 w-3.5" aria-hidden />
+              )}
               <span className="hidden sm:inline">{running ? 'Running' : 'Run'}</span>
-            </button>
+            </Button>
 
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleSubmitCode}
               disabled={running || submitting}
-              className={buttonClass({ variant: 'primary', size: 'sm' })}
+              aria-label="Submit solution"
             >
-              <Send className="h-3.5 w-3.5" aria-hidden />
-              {submitting ? 'Testing' : 'Submit'}
+              {submitting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Send className="h-3.5 w-3.5" aria-hidden />
+              )}
+              <span className="hidden sm:inline">{submitting ? 'Judging' : 'Submit'}</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* mobile pane switch */}
+      <div className="shrink-0 border-b border-line bg-ink-850 lg:hidden">
+        <div className="shell flex h-10 items-center justify-between gap-3">
+          <div role="tablist" aria-label="Workspace panes" className="seg">
+            <button
+              id="workspace-statement-tab"
+              role="tab"
+              aria-selected={mobileTab === 'problem'}
+              aria-controls="workspace-statement"
+              onClick={() => setMobileTab('problem')}
+              className={cn('seg-btn', mobileTab === 'problem' && 'seg-btn-on')}
+            >
+              Problem
+            </button>
+            <button
+              id="workspace-editor-tab"
+              role="tab"
+              aria-selected={mobileTab === 'code'}
+              aria-controls="workspace-editor"
+              onClick={() => setMobileTab('code')}
+              className={cn('seg-btn', mobileTab === 'code' && 'seg-btn-on')}
+            >
+              Editor
             </button>
           </div>
+          <span className="truncate text-xs text-fg-3">{problem.category}</span>
         </div>
       </div>
 
       {/* --------------------------------------------------------------- body */}
       <div className="flex w-full flex-1 overflow-hidden">
         {/* Left: statement */}
-        <div className={cn('flex-col border-line bg-ink-850 lg:flex lg:border-r', leftWidthClass)}>
-          <div className="flex h-10 shrink-0 items-center overflow-x-auto border-b border-line bg-ink-850 px-1">
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              const active = activeLeftTab === t.key;
+        <div
+          id="workspace-statement"
+          role="tabpanel"
+          aria-labelledby={`left-tab-${activeLeftTab}`}
+          className={leftClass}
+        >
+          <div
+            role="tablist"
+            aria-label="Problem details"
+            onKeyDown={moveLeftTab}
+            className="flex h-10 shrink-0 items-center overflow-x-auto border-b border-line bg-ink-850 px-1 scrollbar-none"
+          >
+            {LEFT_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeLeftTab === tab.key;
+
               return (
                 <button
-                  key={t.key}
-                  onClick={() => setActiveLeftTab(t.key)}
-                  aria-current={active ? 'page' : undefined}
-                  className={tabClass(active)}
+                  key={tab.key}
+                  id={`left-tab-${tab.key}`}
+                  role="tab"
+                  aria-selected={active}
+                  aria-controls="left-tab-panel"
+                  tabIndex={active ? 0 : -1}
+                  onClick={() => setActiveLeftTab(tab.key)}
+                  className={cn(
+                    'relative flex h-10 shrink-0 items-center gap-1.5 px-3 text-[13px] font-medium transition-colors after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark-bright',
+                    active
+                      ? 'text-white after:opacity-100'
+                      : 'text-fg-3 after:opacity-0 hover:text-fg'
+                  )}
                 >
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {t.label}
-                  {t.key === 'submissions' && submissionsList.length > 0 && (
-                    <span className="ml-0.5 rounded-sm bg-ink-700 px-1 text-2xs tabular-nums text-fg-3">
+                  <Icon className="hidden h-3.5 w-3.5 sm:block" aria-hidden />
+                  {tab.label}
+                  {tab.key === 'submissions' && submissionsList.length > 0 ? (
+                    <span className="ml-0.5 rounded bg-ink-700 px-1 text-2xs tabular-nums text-fg-2">
                       {submissionsList.length}
                     </span>
-                  )}
+                  ) : null}
                 </button>
               );
             })}
           </div>
 
-          <div className="flex-1 space-y-6 overflow-y-auto p-5 text-sm leading-relaxed sm:p-6 lg:p-7">
-            {activeLeftTab === 'description' && (
+          <div
+            id="left-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`left-tab-${activeLeftTab}`}
+            className="flex-1 space-y-6 overflow-y-auto p-5 text-sm leading-relaxed sm:p-6 lg:p-7"
+          >
+            {activeLeftTab === 'description' ? (
               <div className="space-y-6">
                 <div>
                   <h2 className="text-2xl font-semibold tracking-[-0.022em] text-white">
@@ -490,13 +633,15 @@ export default function ProblemWorkspacePage() {
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <DifficultyBadge difficulty={problem.difficulty} />
                     <Badge>{problem.category}</Badge>
-                    <span className="text-[13px] tabular-nums text-fg-4">
-                      {problem.acceptanceRate}% acceptance
-                    </span>
+                    {problem.acceptanceRate != null ? (
+                      <span className="text-[13px] tabular-nums text-fg-3">
+                        {problem.acceptanceRate}% acceptance
+                      </span>
+                    ) : null}
                   </div>
                 </div>
 
-                {problem.companyTags?.length > 0 && (
+                {problem.companyTags?.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-ink-800 px-3.5 py-3">
                     <span className="flex items-center gap-1.5 text-[13px] text-fg-3">
                       <Building2 className="h-3.5 w-3.5" aria-hidden />
@@ -511,121 +656,120 @@ export default function ProblemWorkspacePage() {
                       </span>
                     ))}
                   </div>
-                )}
+                ) : null}
 
-                <div className="whitespace-pre-line text-sm leading-relaxed text-fg-2">
-                  {problem.description}
-                </div>
+                <Markdown text={problem.description} className="text-sm text-fg-2" />
 
-                {Array.isArray(problem.examples) && problem.examples.length > 0 && (
-                  <section>
-                    <h3 className="text-sm font-semibold text-white">Examples</h3>
+                {Array.isArray(problem.examples) && problem.examples.length > 0 ? (
+                  <section aria-labelledby="workspace-examples">
+                    <h3 id="workspace-examples" className="text-sm font-semibold text-white">
+                      Examples
+                    </h3>
                     <div className="mt-3 space-y-3">
-                      {problem.examples.map((ex: any, idx: number) => (
-                        <div key={idx} className="card p-4">
-                          <div className="mb-2 text-xs font-medium text-fg-4">
-                            Example {idx + 1}
+                      {problem.examples.map((example: any, index: number) => (
+                        <div key={index} className="card p-4">
+                          <div className="mb-2 text-xs font-medium text-fg-3">
+                            Example {index + 1}
                           </div>
                           <div className="space-y-1.5 font-mono text-[13px]">
                             <div>
-                              <span className="text-fg-4">Input </span>
-                              <span className="text-fg">{ex.input}</span>
+                              <span className="text-fg-3">Input </span>
+                              <span className="text-fg">{example.input}</span>
                             </div>
                             <div>
-                              <span className="text-fg-4">Output </span>
-                              <span className="text-easy">{ex.output}</span>
+                              <span className="text-fg-3">Output </span>
+                              <span className="text-easy">{example.output}</span>
                             </div>
-                            {ex.explanation && (
-                              <p className="border-t border-line-soft pt-2 font-sans text-[13px] leading-relaxed text-fg-3">
-                                {ex.explanation}
+                            {example.explanation ? (
+                              <p className="border-t border-line-soft pt-2 font-sans text-[13px] leading-relaxed text-fg-2">
+                                {example.explanation}
                               </p>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       ))}
                     </div>
                   </section>
-                )}
+                ) : null}
 
-                {Array.isArray(problem.constraints) && problem.constraints.length > 0 && (
-                  <section>
-                    <h3 className="text-sm font-semibold text-white">Constraints</h3>
+                {Array.isArray(problem.constraints) && problem.constraints.length > 0 ? (
+                  <section aria-labelledby="workspace-constraints">
+                    <h3 id="workspace-constraints" className="text-sm font-semibold text-white">
+                      Constraints
+                    </h3>
                     <ul className="mt-3 flex flex-wrap gap-1.5">
-                      {problem.constraints.map((c: string, idx: number) => (
+                      {problem.constraints.map((constraint: string, index: number) => (
                         <li
-                          key={idx}
+                          key={index}
                           className="rounded-sm border border-line bg-ink-800 px-2.5 py-1 font-mono text-[13px] text-fg-2"
                         >
-                          {c}
+                          {constraint}
                         </li>
                       ))}
                     </ul>
                   </section>
-                )}
+                ) : null}
 
-                {(() => {
-                  const hintsList = Array.isArray(problem.hints)
-                    ? problem.hints
-                    : typeof problem.hints === 'string'
-                    ? (() => {
-                        try {
-                          const p = JSON.parse(problem.hints);
-                          return Array.isArray(p) ? p : [problem.hints];
-                        } catch {
-                          return problem.hints ? [problem.hints] : [];
-                        }
-                      })()
-                    : [];
+                {hints.length > 0 ? (
+                  <section className="border-t border-line pt-5" aria-labelledby="workspace-hints">
+                    <h3
+                      id="workspace-hints"
+                      className="flex items-center gap-2 text-sm font-semibold text-white"
+                    >
+                      <Lightbulb className="h-4 w-4 text-mark-bright" aria-hidden />
+                      Hints
+                    </h3>
+                    <div className="mt-3 space-y-2">
+                      {hints.map((hint: string, index: number) => {
+                        const open = Boolean(expandedHints[index]);
 
-                  if (!hintsList.length) return null;
-
-                  return (
-                    <section className="border-t border-line pt-5">
-                      <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-                        <Lightbulb className="h-4 w-4 text-mark" aria-hidden />
-                        Hints
-                      </h3>
-                      <div className="mt-3 space-y-2">
-                        {hintsList.map((hint: string, idx: number) => {
-                          const isOpen = expandedHints[idx];
-                          return (
-                            <div key={idx} className="card overflow-hidden">
-                              <button
-                                onClick={() => setExpandedHints({ ...expandedHints, [idx]: !isOpen })}
-                                aria-expanded={isOpen}
-                                className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] font-medium text-fg-2 transition-colors hover:text-white"
-                              >
-                                <span>Hint {idx + 1}</span>
-                                {isOpen ? (
-                                  <ChevronUp className="h-3.5 w-3.5 text-fg-4" aria-hidden />
-                                ) : (
-                                  <ChevronDown className="h-3.5 w-3.5 text-fg-4" aria-hidden />
-                                )}
-                              </button>
-                              {isOpen && (
-                                <p className="border-t border-line-soft px-4 py-3 text-[13px] leading-relaxed text-fg-3">
-                                  {hint}
-                                </p>
+                        return (
+                          <div key={index} className="card overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedHints((previous) => ({
+                                  ...previous,
+                                  [index]: !open,
+                                }))
+                              }
+                              aria-expanded={open}
+                              aria-controls={`hint-panel-${index}`}
+                              className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-[13px] font-medium text-fg-2 transition-colors hover:text-white"
+                            >
+                              <span>Hint {index + 1}</span>
+                              {open ? (
+                                <ChevronUp className="h-3.5 w-3.5 text-fg-3" aria-hidden />
+                              ) : (
+                                <ChevronDown className="h-3.5 w-3.5 text-fg-3" aria-hidden />
                               )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  );
-                })()}
+                            </button>
+                            {open ? (
+                              <p
+                                id={`hint-panel-${index}`}
+                                className="border-t border-line-soft px-4 py-3 text-[13px] leading-relaxed text-fg-2"
+                              >
+                                {hint}
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ) : null}
               </div>
-            )}
+            ) : null}
 
-            {activeLeftTab === 'solution' && (
+            {activeLeftTab === 'solution' ? (
               <div>
                 <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
                   <h2 className="text-lg font-semibold text-white">Editorial</h2>
                   <Badge tone="mark">Official solution</Badge>
                 </div>
                 {problem.solution ? (
-                  <div className="mt-4 whitespace-pre-line rounded-lg border border-line bg-ink-800 p-5 text-sm leading-relaxed text-fg-2">
-                    {problem.solution}
+                  <div className="mt-4 rounded-lg border border-line bg-ink-800 p-5">
+                    <Markdown text={problem.solution} className="text-sm text-fg-2" />
                   </div>
                 ) : (
                   <EmptyState
@@ -635,9 +779,9 @@ export default function ProblemWorkspacePage() {
                   />
                 )}
               </div>
-            )}
+            ) : null}
 
-            {activeLeftTab === 'submissions' && (
+            {activeLeftTab === 'submissions' ? (
               <div>
                 <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
                   <h2 className="text-lg font-semibold text-white">Your submissions</h2>
@@ -654,44 +798,50 @@ export default function ProblemWorkspacePage() {
                   />
                 ) : (
                   <ul className="mt-4 space-y-2">
-                    {submissionsList.map((sub: any) => {
-                      const accepted = sub.status === 'ACCEPTED';
+                    {submissionsList.map((submission: any) => {
+                      const accepted = submission.status === 'ACCEPTED';
+
                       return (
-                        <li
-                          key={sub.id}
-                          className="card flex items-center justify-between gap-4 p-3.5"
-                        >
-                          <div className="flex min-w-0 items-center gap-3">
-                            {accepted ? (
-                              <CheckCircle2 className="h-4 w-4 shrink-0 text-easy" aria-hidden />
-                            ) : (
-                              <XCircle className="h-4 w-4 shrink-0 text-hard" aria-hidden />
-                            )}
-                            <div className="min-w-0">
-                              <div
-                                className={cn(
-                                  'text-sm font-semibold',
-                                  accepted ? 'text-easy' : 'text-hard'
-                                )}
-                              >
-                                {accepted ? 'Accepted' : STATUS_TEXT[sub.status] || sub.status}
-                              </div>
-                              <div className="text-xs tabular-nums text-fg-4">
-                                {new Date(sub.createdAt).toLocaleString()}
+                        <li key={submission.id} className="card p-3.5">
+                          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                            <div className="flex min-w-0 items-start gap-2.5">
+                              {accepted ? (
+                                <CheckCircle2
+                                  className="mt-0.5 h-4 w-4 shrink-0 text-easy"
+                                  aria-hidden
+                                />
+                              ) : (
+                                <XCircle
+                                  className="mt-0.5 h-4 w-4 shrink-0 text-hard"
+                                  aria-hidden
+                                />
+                              )}
+                              <div className="min-w-0">
+                                <div
+                                  className={cn(
+                                    'text-sm font-semibold',
+                                    accepted ? 'text-easy' : 'text-hard'
+                                  )}
+                                >
+                                  {accepted
+                                    ? 'Accepted'
+                                    : STATUS_TEXT[submission.status] || submission.status}
+                                </div>
+                                <div className="mt-0.5 text-xs tabular-nums text-fg-3">
+                                  {new Date(submission.createdAt).toLocaleString()}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex shrink-0 items-center gap-4 text-right">
-                            <span className="rounded-sm border border-line bg-ink-750 px-1.5 py-0.5 text-xs capitalize text-fg-3">
-                              {sub.language}
-                            </span>
-                            <span className="text-sm font-semibold tabular-nums text-fg">
-                              {sub.runtimeMs || 0} ms
-                            </span>
-                            <span className="w-20 text-xs tabular-nums text-fg-4">
-                              {sub.passedTests}/{sub.totalTests} passed
-                            </span>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-6 text-xs">
+                              <Tag className="capitalize">{submission.language}</Tag>
+                              <span className="font-semibold tabular-nums text-fg-2">
+                                {submission.runtimeMs || 0} ms
+                              </span>
+                              <span className="tabular-nums text-fg-3">
+                                {submission.passedTests}/{submission.totalTests} passed
+                              </span>
+                            </div>
                           </div>
                         </li>
                       );
@@ -699,19 +849,25 @@ export default function ProblemWorkspacePage() {
                   </ul>
                 )}
               </div>
-            )}
+            ) : null}
 
-            {activeLeftTab === 'notes' && (
+            {activeLeftTab === 'notes' ? (
               <div>
                 <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
                   <h2 className="text-lg font-semibold text-white">Your notes</h2>
-                  <button
+                  <Button
+                    size="sm"
+                    variant="primary"
                     onClick={handleSaveNote}
-                    className={buttonClass({ variant: noteSaved ? 'secondary' : 'primary', size: 'sm' })}
+                    disabled={savingNote}
                   >
-                    {noteSaved && <Check className="h-3.5 w-3.5 text-easy" aria-hidden />}
-                    {noteSaved ? 'Saved' : 'Save note'}
-                  </button>
+                    {savingNote ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                    {savingNote ? 'Saving…' : 'Save note'}
+                  </Button>
                 </div>
 
                 <p className="mt-4 text-sm leading-relaxed text-fg-3">
@@ -719,60 +875,103 @@ export default function ProblemWorkspacePage() {
                   interview.
                 </p>
 
+                {noteNotice ? (
+                  <div className="mt-3">
+                    <Notice tone="ok" icon={CheckCircle2}>
+                      {noteNotice}
+                    </Notice>
+                  </div>
+                ) : null}
+
+                {noteError ? (
+                  <div className="mt-3">
+                    <Notice tone="err" icon={TriangleAlert}>
+                      {noteError}
+                    </Notice>
+                  </div>
+                ) : null}
+
                 <textarea
                   value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
+                  onChange={(event) => {
+                    setNoteContent(event.target.value);
+                    setNoteNotice('');
+                    setNoteError('');
+                  }}
                   placeholder="Negative numbers break the sort. O(n) time, O(1) space…"
                   aria-label="Notes for this problem"
                   className="textarea mt-3 h-72 font-mono text-[13px]"
                 />
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
         {/* Right: editor + console */}
-        <div className={cn('flex flex-col bg-ink-950', rightWidthClass)}>
+        <div
+          id="workspace-editor"
+          role="tabpanel"
+          aria-labelledby="workspace-editor-tab"
+          className={rightClass}
+        >
           <div className="relative min-h-0 flex-1 overflow-hidden">
-            <CodeEditor
-              language={language}
-              value={code}
-              onChange={handleCodeChange}
-            />
+            <CodeEditor language={language} value={code} onChange={handleCodeChange} />
           </div>
 
           {/* Console drawer */}
           <div
             className={cn(
               'flex shrink-0 flex-col border-t border-line bg-ink-850 transition-[height] duration-200',
-              consoleOpen ? 'h-64' : 'h-11'
+              consoleOpen ? 'h-56 sm:h-64' : 'h-11'
             )}
           >
             <div className="flex h-11 shrink-0 items-center justify-between border-b border-line px-3">
-              <div className="flex items-center">
+              <div
+                role="tablist"
+                aria-label="Console"
+                className="flex min-w-0 items-center overflow-x-auto scrollbar-none"
+              >
                 <button
+                  id="console-tab-testcase"
+                  role="tab"
+                  aria-selected={activeConsoleTab === 'testcase'}
+                  aria-controls="console-panel"
+                  tabIndex={activeConsoleTab === 'testcase' ? 0 : -1}
                   onClick={() => {
                     setActiveConsoleTab('testcase');
                     setConsoleOpen(true);
                   }}
-                  aria-current={activeConsoleTab === 'testcase' && consoleOpen ? 'page' : undefined}
-                  className={tabClass(activeConsoleTab === 'testcase' && consoleOpen)}
+                  className={cn(
+                    'relative flex h-10 shrink-0 items-center gap-1.5 px-2.5 text-[13px] font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark-bright',
+                    activeConsoleTab === 'testcase' && consoleOpen
+                      ? 'text-white after:opacity-100'
+                      : 'text-fg-3 after:opacity-0 hover:text-fg'
+                  )}
                 >
                   <Terminal className="h-3.5 w-3.5" aria-hidden />
                   Test cases
                 </button>
 
                 <button
+                  id="console-tab-result"
+                  role="tab"
+                  aria-selected={activeConsoleTab === 'result'}
+                  aria-controls="console-panel"
+                  tabIndex={activeConsoleTab === 'result' ? 0 : -1}
                   onClick={() => {
                     setActiveConsoleTab('result');
                     setConsoleOpen(true);
                   }}
-                  aria-current={activeConsoleTab === 'result' && consoleOpen ? 'page' : undefined}
-                  className={tabClass(activeConsoleTab === 'result' && consoleOpen)}
+                  className={cn(
+                    'relative flex h-10 shrink-0 items-center gap-1.5 px-2.5 text-[13px] font-medium transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark-bright',
+                    activeConsoleTab === 'result' && consoleOpen
+                      ? 'text-white after:opacity-100'
+                      : 'text-fg-3 after:opacity-0 hover:text-fg'
+                  )}
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
                   Results
-                  {currentResult && (
+                  {currentResult ? (
                     <span
                       className={cn(
                         'ml-1 h-1.5 w-1.5 rounded-full',
@@ -780,14 +979,17 @@ export default function ProblemWorkspacePage() {
                       )}
                       aria-hidden
                     />
-                  )}
+                  ) : null}
                 </button>
               </div>
 
               <button
-                onClick={() => setConsoleOpen((v) => !v)}
+                type="button"
+                onClick={() => setConsoleOpen((value) => !value)}
+                aria-expanded={consoleOpen}
+                aria-controls="console-panel"
                 aria-label={consoleOpen ? 'Collapse console' : 'Expand console'}
-                className="btn btn-ghost btn-sm px-2"
+                className="btn btn-ghost btn-sm shrink-0 px-2"
               >
                 {consoleOpen ? (
                   <ChevronDown className="h-4 w-4" aria-hidden />
@@ -797,34 +999,43 @@ export default function ProblemWorkspacePage() {
               </button>
             </div>
 
-            {consoleOpen && (
-              <div className="flex-1 overflow-y-auto p-4 text-[13px]">
-                {activeConsoleTab === 'testcase' && (
+            {consoleOpen ? (
+              <div
+                id="console-panel"
+                role="tabpanel"
+                aria-labelledby={`console-tab-${activeConsoleTab}`}
+                className="flex-1 overflow-y-auto p-4 text-[13px]"
+              >
+                {activeConsoleTab === 'testcase' ? (
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="seg">
-                        {problem.testCases?.map((tc: any, idx: number) => (
-                          <button
-                            key={idx}
-                            onClick={() => {
-                              setSelectedCaseIndex(idx);
-                              setCustomInput(tc.input);
-                            }}
-                            aria-pressed={selectedCaseIndex === idx}
-                            className={cn(
-                              'seg-btn',
-                              selectedCaseIndex === idx && 'seg-btn-on',
-                              tc.isHidden && 'text-mark'
-                            )}
-                          >
-                            Case {idx + 1}
-                          </button>
-                        ))}
-                      </div>
+                      {testCases.length > 0 ? (
+                        <div className="seg flex-wrap" aria-label="Sample cases">
+                          {testCases.map((testCase: any, index: number) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCaseIndex(index);
+                                setCustomInput(testCase.input || '');
+                              }}
+                              aria-pressed={selectedCaseIndex === index}
+                              className={cn(
+                                'seg-btn',
+                                selectedCaseIndex === index && 'seg-btn-on'
+                              )}
+                            >
+                              Case {index + 1}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-fg-3">No sample cases published.</span>
+                      )}
 
                       <button
                         type="button"
-                        onClick={() => setRawInputMode((v) => !v)}
+                        onClick={() => setRawInputMode((value) => !value)}
                         className="text-[13px] text-fg-3 underline underline-offset-2 transition-colors hover:text-white"
                       >
                         {rawInputMode ? 'Use formatted view' : 'Edit raw input'}
@@ -835,15 +1046,18 @@ export default function ProblemWorkspacePage() {
                       <div className="space-y-2">
                         {customInput
                           .split('\n')
-                          .filter((l) => l.trim().length > 0)
-                          .map((line, idx) => (
-                            <div key={idx} className="space-y-1">
-                              <span className="block text-xs text-fg-4">
-                                parameter {idx + 1}
+                          .filter((line) => line.trim().length > 0)
+                          .map((line, index) => (
+                            <div key={index} className="space-y-1">
+                              <span className="block text-xs text-fg-3">
+                                Parameter {index + 1}
                               </span>
                               <div className="code-well !py-2">{line}</div>
                             </div>
                           ))}
+                        {!customInput.trim() ? (
+                          <p className="text-fg-3">This case has no input.</p>
+                        ) : null}
                       </div>
                     ) : (
                       <div>
@@ -853,38 +1067,46 @@ export default function ProblemWorkspacePage() {
                         <textarea
                           id="raw-input"
                           value={customInput}
-                          onChange={(e) => setCustomInput(e.target.value)}
+                          onChange={(event) => setCustomInput(event.target.value)}
                           className="textarea h-24 font-mono text-[13px]"
                         />
                       </div>
                     )}
                   </div>
-                )}
-
-                {activeConsoleTab === 'result' && (
+                ) : (
                   <div>
-                    {!currentResult ? (
-                      <p className="py-8 text-center text-fg-4">
-                        Run your code to check the samples, then submit for the full hidden suite.
+                    {actionError ? (
+                      <Notice tone="err" icon={TriangleAlert}>
+                        {actionError}
+                      </Notice>
+                    ) : !currentResult ? (
+                      <p className="py-8 text-center text-fg-3">
+                        Run your code against the samples, then submit for the full hidden suite.
                       </p>
                     ) : (
                       <div className="space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3">
-                          <div
-                            className={cn(
-                              'flex items-center gap-2 text-base font-semibold',
-                              currentResult.status === 'ACCEPTED' ? 'text-easy' : 'text-hard'
-                            )}
-                          >
-                            {currentResult.status === 'ACCEPTED' ? (
-                              <CheckCircle2 className="h-5 w-5" aria-hidden />
-                            ) : (
-                              <XCircle className="h-5 w-5" aria-hidden />
-                            )}
-                            {STATUS_TEXT[currentResult.status] || currentResult.status}
+                        <div
+                          className="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-3"
+                          role="status"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={cn(
+                                'flex items-center gap-2 text-base font-semibold',
+                                currentResult.status === 'ACCEPTED' ? 'text-easy' : 'text-hard'
+                              )}
+                            >
+                              {currentResult.status === 'ACCEPTED' ? (
+                                <CheckCircle2 className="h-5 w-5" aria-hidden />
+                              ) : (
+                                <XCircle className="h-5 w-5" aria-hidden />
+                              )}
+                              {STATUS_TEXT[currentResult.status] || currentResult.status}
+                            </span>
+                            <span className="text-xs text-fg-3">{resultKind}</span>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-md border border-line bg-ink-750 px-2.5 py-1 text-[13px] text-fg-2">
                               Runtime{' '}
                               <strong className="font-semibold tabular-nums text-white">
@@ -900,72 +1122,78 @@ export default function ProblemWorkspacePage() {
                           </div>
                         </div>
 
-                        {currentResult.compileError && (
+                        {currentResult.compileError ? (
                           <pre className="whitespace-pre-wrap rounded-lg border border-hard/30 bg-hard/10 p-3 font-mono text-[13px] leading-relaxed text-hard">
                             {currentResult.compileError}
                           </pre>
-                        )}
+                        ) : null}
 
-                        {currentResult.testResults?.length > 0 && (
+                        {Array.isArray(currentResult.testResults) &&
+                        currentResult.testResults.length > 0 ? (
                           <div className="space-y-3">
-                            <div className="seg flex-wrap">
-                              {currentResult.testResults.map((tc: any) => (
+                            <div className="seg flex-wrap" aria-label="Result cases">
+                              {currentResult.testResults.map((testCase: any) => (
                                 <button
-                                  key={tc.index}
-                                  onClick={() => setSelectedCaseIndex(tc.index - 1)}
-                                  aria-pressed={selectedCaseIndex === tc.index - 1}
+                                  key={testCase.index}
+                                  type="button"
+                                  onClick={() => setSelectedCaseIndex(testCase.index - 1)}
+                                  aria-pressed={selectedCaseIndex === testCase.index - 1}
                                   className={cn(
                                     'seg-btn',
-                                    selectedCaseIndex === tc.index - 1 && 'seg-btn-on'
+                                    selectedCaseIndex === testCase.index - 1 && 'seg-btn-on'
                                   )}
                                 >
                                   <span
                                     className={cn(
-                                      'mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle',
-                                      tc.passed ? 'bg-easy' : 'bg-hard'
+                                      'mr-1.5 inline-block h-1.5 w-1.5 rounded-full',
+                                      testCase.passed ? 'bg-easy' : 'bg-hard'
                                     )}
                                     aria-hidden
                                   />
-                                  Case {tc.index}
+                                  Case {testCase.index}
                                 </button>
                               ))}
                             </div>
 
                             {(() => {
+                              const results = currentResult.testResults;
                               const activeCase =
-                                currentResult.testResults[
+                                results[
                                   Math.min(
                                     Math.max(0, selectedCaseIndex),
-                                    currentResult.testResults.length - 1
+                                    results.length - 1
                                   )
                                 ];
                               if (!activeCase) return null;
+
                               return (
                                 <div className="card space-y-3 p-3.5">
                                   <div>
-                                    <span className="mb-1 block text-xs text-fg-4">Input</span>
-                                    <div className="code-well !py-2">
-                                      {activeCase.input}
-                                    </div>
+                                    <span className="mb-1 block text-xs text-fg-3">Input</span>
+                                    <div className="code-well !py-2">{activeCase.input}</div>
                                   </div>
 
                                   <div>
-                                    <span className="mb-1 block text-xs text-fg-4">Your output</span>
+                                    <span className="mb-1 block text-xs text-fg-3">
+                                      Your output
+                                    </span>
                                     <div className="code-well !py-2">
                                       {activeCase.actualOutput || '(empty)'}
                                     </div>
                                   </div>
 
-                                  {activeCase.expectedOutput && (
+                                  {activeCase.expectedOutput ? (
                                     <div>
-                                      <span className="mb-1 block text-xs text-fg-4">Expected</span>
+                                      <span className="mb-1 block text-xs text-fg-3">
+                                        Expected
+                                      </span>
                                       <div className="code-well !py-2 !text-easy">
                                         {activeCase.expectedOutput}
                                       </div>
                                     </div>
-                                  )}
+                                  ) : null}
 
-                                  {activeCase.stderr && (
+                                  {activeCase.stderr ? (
                                     <div>
                                       <span className="mb-1 block text-xs text-hard">
                                         Standard error
@@ -974,21 +1202,31 @@ export default function ProblemWorkspacePage() {
                                         {activeCase.stderr}
                                       </pre>
                                     </div>
-                                  )}
+                                  ) : null}
                                 </div>
                               );
                             })()}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmResetOpen}
+        title="Reset the editor?"
+        description={`This replaces your ${language} code with the starter template. Your current code cannot be recovered.`}
+        confirmLabel="Reset code"
+        tone="danger"
+        onConfirm={resetCode}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
     </div>
   );
 }

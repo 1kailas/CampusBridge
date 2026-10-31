@@ -100,17 +100,19 @@ export class AuthService {
 
   async demoAdminLogin() {
     // Find or create demo admin / placement trainer
-    let user = await this.prisma.user.findUnique({
-      where: { email: 'trainer@campusbridge.edu' },
+    let user = await this.prisma.user.findFirst({
+      where: {
+        email: { in: ['trainer@placement.edu', 'trainer@campusbridge.edu'] },
+      },
     });
 
     if (!user) {
       const hashedPassword = await bcrypt.hash('trainer2026', 10);
       user = await this.prisma.user.create({
         data: {
-          email: 'trainer@campusbridge.edu',
+          email: 'trainer@placement.edu',
           password: hashedPassword,
-          name: 'Prof. Ramesh (Training & Placement Cell)',
+          name: 'Prof. Rajesh Verma (Training & Placement Cell)',
           college: 'Campus Bridge Placement Academy',
           graduationYear: 2026,
           targetCompany: 'Admin & Question Committee',

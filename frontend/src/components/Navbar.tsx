@@ -11,8 +11,9 @@ import {
   ChevronDown,
   FileCode2,
   GraduationCap,
-  LayoutDashboard,
   Layers,
+  LayoutDashboard,
+  LogIn,
   LogOut,
   Menu,
   ShieldCheck,
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { label: 'Problemset', href: '/problems', icon: FileCode2 },
+  { label: 'Problems', href: '/problems', icon: FileCode2 },
   { label: 'SDE Sheets', href: '/sheets', icon: Layers },
   { label: 'Mock Tests', href: '/assessments', icon: Timer },
   { label: 'Leaderboard', href: '/leaderboard', icon: Trophy },
@@ -37,15 +38,16 @@ export default function Navbar() {
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [roleError, setRoleError] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setUser(api.getUser());
   }, []);
 
-  // Route changes close every transient surface.
   useEffect(() => {
     setMenuOpen(false);
     setDrawerOpen(false);
@@ -53,12 +55,16 @@ export default function Navbar() {
 
   useEffect(() => {
     if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+
+    const onDown = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
     };
+
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -67,17 +73,38 @@ export default function Navbar() {
     };
   }, [menuOpen]);
 
-  const signIn = async (kind: 'student' | 'admin') => {
+  useEffect(() => {
+    if (!drawerOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusTimer = window.setTimeout(() => {
+      drawerRef.current?.querySelector<HTMLElement>('a, button')?.focus();
+    }, 20);
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [drawerOpen]);
+
+  const switchRole = async () => {
+    const isAdmin = user?.role === 'ADMIN' || user?.role === 'TRAINER';
     try {
       setBusy(true);
-      const res = kind === 'student' ? await api.demoLogin() : await api.demoAdminLogin();
+      setRoleError('');
+      const res = isAdmin ? await api.demoLogin() : await api.demoAdminLogin();
       setUser(res.user);
       window.location.reload();
     } catch {
-      window.alert(
-        `Could not sign you in as ${kind === 'student' ? 'a student' : 'an admin'}. The API at http://localhost:4000 is not responding — start the backend and try again.`
-      );
-    } finally {
+      setRoleError('Could not switch accounts. Check that the API is running.');
       setBusy(false);
     }
   };
@@ -88,24 +115,28 @@ export default function Navbar() {
     window.location.href = '/';
   };
 
+  if (pathname === '/login') return null;
+
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'TRAINER';
-  const switchRole = () => signIn(isAdmin ? 'student' : 'admin');
+  const roleLabel = isAdmin ? 'Trainer' : 'Student';
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-line bg-ink-850 select-none">
-      <div className="shell flex h-14 items-center justify-between gap-4">
-        {/* Brand + primary navigation */}
-        <div className="flex items-center gap-5 sm:gap-7 h-full min-w-0">
-          <Link href="/" className="group flex items-center gap-2.5 shrink-0">
-            <span className="grid h-7 w-7 place-items-center rounded-sm bg-mark text-[11px] font-bold tracking-tight text-ink-950 transition-transform duration-150 group-hover:scale-105">
-              CB
+    <nav
+      aria-label="Main navigation"
+      className="sticky top-0 z-50 w-full select-none border-b border-line bg-ink-900/95 backdrop-blur"
+    >
+      <div className="shell flex h-16 items-center justify-between gap-4">
+        <div className="flex h-full min-w-0 items-center gap-3 lg:gap-7">
+          <Link href="/" className="group flex shrink-0 items-center gap-2.5">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-mark text-white transition-colors group-hover:bg-mark-600">
+              <GraduationCap className="h-4 w-4" aria-hidden />
             </span>
-            <span className="hidden text-[15px] font-semibold tracking-tight text-white sm:block">
+            <span className="text-[15px] font-semibold tracking-[-0.02em] text-white">
               Campus Bridge
             </span>
           </Link>
 
-          <div className="hidden h-full items-center md:flex">
+          <div className="hidden h-full items-center gap-1 md:flex">
             {NAV_ITEMS.map((item) => {
               const active = isCurrent(pathname, item.href);
               return (
@@ -114,8 +145,11 @@ export default function Navbar() {
                   href={item.href}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'relative flex h-full items-center px-3 text-sm font-medium transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark after:transition-opacity',
-                    active ? 'text-white after:opacity-100' : 'text-fg-3 after:opacity-0 hover:text-fg'
+                    'relative flex h-16 items-center whitespace-nowrap px-2.5 text-sm font-medium transition-colors duration-150 lg:px-3',
+                    'after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark-bright after:transition-opacity lg:after:inset-x-3',
+                    active
+                      ? 'text-white after:opacity-100'
+                      : 'text-fg-3 after:opacity-0 hover:text-fg'
                   )}
                 >
                   {item.label}
@@ -123,150 +157,154 @@ export default function Navbar() {
               );
             })}
 
-            <Link
-              href="/admin"
-              aria-current={isCurrent(pathname, '/admin') ? 'page' : undefined}
-              className={cn(
-                'relative flex h-full items-center gap-1.5 px-3 text-sm font-medium transition-colors duration-150 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-mark after:transition-opacity',
-                isCurrent(pathname, '/admin')
-                  ? 'text-white after:opacity-100'
-                  : isAdmin
-                    ? 'text-fg-2 after:opacity-0 hover:text-white'
+            {isAdmin && (
+              <Link
+                href="/admin"
+                aria-current={isCurrent(pathname, '/admin') ? 'page' : undefined}
+                className={cn(
+                  'relative flex h-16 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm font-medium transition-colors duration-150 lg:px-3',
+                  'after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent after:transition-opacity lg:after:inset-x-3',
+                  isCurrent(pathname, '/admin')
+                    ? 'text-white after:opacity-100'
                     : 'text-fg-3 after:opacity-0 hover:text-fg'
-              )}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" aria-hidden />
-              Admin
-              {isAdmin && <span className="h-1.5 w-1.5 rounded-full bg-mark" aria-hidden />}
-            </Link>
+                )}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+                Studio
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* Account actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           {user ? (
-            <>
+            <div className="relative" ref={menuRef}>
               <button
-                onClick={switchRole}
-                disabled={busy}
-                title={`Switch to ${isAdmin ? 'student' : 'admin'} view`}
-                className={buttonClass({ variant: 'secondary', size: 'sm', className: 'hidden sm:inline-flex' })}
+                onClick={() => setMenuOpen((value) => !value)}
+                aria-expanded={menuOpen}
+                aria-controls="account-menu"
+                aria-label={menuOpen ? 'Close account menu' : 'Open account menu'}
+                className="flex h-9 items-center gap-2 rounded-md border border-line-strong bg-ink-800 px-2 text-sm font-medium text-fg transition-colors hover:bg-ink-750"
               >
-                <ArrowLeftRight className="w-3.5 h-3.5" aria-hidden />
-                {isAdmin ? 'Student view' : 'Admin view'}
+                <span
+                  className={cn(
+                    'grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-white',
+                    isAdmin ? 'bg-mark' : 'bg-accent/80 text-ink-950'
+                  )}
+                  aria-hidden
+                >
+                  {isAdmin ? (
+                    <ShieldCheck className="h-3 w-3" />
+                  ) : (
+                    (user.name || '?').charAt(0).toUpperCase()
+                  )}
+                </span>
+                <span className="hidden max-w-[140px] truncate text-white lg:block">{user.name}</span>
+                <ChevronDown
+                  className={cn(
+                    'h-3.5 w-3.5 text-fg-3 transition-transform',
+                    menuOpen && 'rotate-180'
+                  )}
+                  aria-hidden
+                />
               </button>
 
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  className="flex h-9 items-center gap-2 rounded-md border border-line-strong bg-ink-750 px-2 text-sm font-medium text-fg transition-colors hover:bg-ink-700"
+              {menuOpen && (
+                <div
+                  id="account-menu"
+                  aria-label="Account"
+                  className="absolute right-0 mt-2 w-64 overflow-hidden rounded-lg border border-line-strong bg-ink-800 shadow-pop"
                 >
-                  <span
-                    className={cn(
-                      'grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-ink-950',
-                      isAdmin ? 'bg-mark' : 'bg-paper'
-                    )}
-                    aria-hidden
-                  >
-                    {isAdmin ? <ShieldCheck className="w-3 h-3" /> : (user.name || '?').charAt(0).toUpperCase()}
-                  </span>
-                  <span className="hidden max-w-[110px] truncate text-white sm:block">{user.name}</span>
-                  <ChevronDown
-                    className={cn('h-3.5 w-3.5 text-fg-3 transition-transform', menuOpen && 'rotate-180')}
-                    aria-hidden
-                  />
-                </button>
-
-                {menuOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 mt-2 w-64 overflow-hidden rounded-lg border border-line-strong bg-ink-800 shadow-pop"
-                  >
-                    <div className="border-b border-line px-4 py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-fg-3">Signed in as</span>
-                        <span className={cn('badge', isAdmin ? 'badge-mark' : 'badge-neutral')}>
-                          {user.role?.toLowerCase()}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-sm font-medium text-white">{user.email}</p>
+                  <div className="border-b border-line px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-fg-3">Signed in as</span>
+                      <span className={cn('badge', isAdmin ? 'badge-mark' : 'badge-neutral')}>
+                        {roleLabel}
+                      </span>
                     </div>
-
-                    <div className="p-1.5">
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          switchRole();
-                        }}
-                        className="flex w-full items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm text-fg-2 transition-colors hover:bg-ink-750 hover:text-white"
-                      >
-                        <ArrowLeftRight className="h-4 w-4 text-fg-3" aria-hidden />
-                        Switch to {isAdmin ? 'student' : 'admin'}
-                      </button>
-
-                      {isAdmin && (
-                        <Link
-                          role="menuitem"
-                          href="/admin"
-                          className="flex w-full items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm text-fg-2 transition-colors hover:bg-ink-750 hover:text-white"
-                        >
-                          <LayoutDashboard className="h-4 w-4 text-fg-3" aria-hidden />
-                          Question studio
-                        </Link>
-                      )}
-
-                      <Link
-                        role="menuitem"
-                        href="/profile"
-                        className="flex w-full items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm text-fg-2 transition-colors hover:bg-ink-750 hover:text-white"
-                      >
-                        <User className="h-4 w-4 text-fg-3" aria-hidden />
-                        My profile
-                      </Link>
-
-                      <div className="my-1 h-px bg-line" />
-
-                      <button
-                        role="menuitem"
-                        onClick={signOut}
-                        className="flex w-full items-center gap-2.5 rounded-sm px-2.5 py-2 text-sm text-hard transition-colors hover:bg-hard/10"
-                      >
-                        <LogOut className="h-4 w-4" aria-hidden />
-                        Sign out
-                      </button>
-                    </div>
+                    <p className="mt-1 truncate text-sm font-medium text-white">{user.email}</p>
                   </div>
-                )}
-              </div>
-            </>
+
+                  <div className="p-1.5">
+                    <Link
+                      href="/profile"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm text-fg-2 transition-colors hover:bg-white/[0.05] hover:text-white"
+                    >
+                      <User className="h-4 w-4 text-fg-3" aria-hidden />
+                      My profile
+                    </Link>
+
+                    {isAdmin && (
+                      <Link
+                        href="/admin"
+                        onClick={() => setMenuOpen(false)}
+                        className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm text-fg-2 transition-colors hover:bg-white/[0.05] hover:text-white"
+                      >
+                        <LayoutDashboard className="h-4 w-4 text-fg-3" aria-hidden />
+                        Question studio
+                      </Link>
+                    )}
+
+                    <button
+                      onClick={switchRole}
+                      disabled={busy}
+                      className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm text-fg-2 transition-colors hover:bg-white/[0.05] hover:text-white disabled:opacity-50"
+                    >
+                      <ArrowLeftRight className="h-4 w-4 text-fg-3" aria-hidden />
+                      {busy ? 'Switching…' : `Switch to ${isAdmin ? 'student' : 'trainer'} demo`}
+                    </button>
+
+                    {roleError ? (
+                      <p className="px-2.5 pb-1 pt-0.5 text-xs text-hard" role="alert">
+                        {roleError}
+                      </p>
+                    ) : null}
+
+                    <div className="my-1 h-px bg-line" />
+
+                    <button
+                      onClick={signOut}
+                      className="flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-sm text-hard transition-colors hover:bg-hard/10"
+                    >
+                      <LogOut className="h-4 w-4" aria-hidden />
+                      Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <>
-              <button
-                onClick={() => signIn('student')}
-                disabled={busy}
-                className={buttonClass({ variant: 'primary', size: 'sm', className: 'hidden sm:inline-flex' })}
+              <Link
+                href="/login"
+                className={buttonClass({
+                  variant: 'primary',
+                  size: 'sm',
+                  className: 'hidden sm:inline-flex',
+                })}
               >
-                <GraduationCap className="h-4 w-4" aria-hidden />
+                <LogIn className="h-4 w-4" aria-hidden />
                 Sign in
-              </button>
-              <button
-                onClick={() => signIn('admin')}
-                disabled={busy}
-                className={buttonClass({ variant: 'secondary', size: 'sm', className: 'hidden lg:inline-flex' })}
+              </Link>
+              <Link
+                href="/login?mode=register"
+                className={buttonClass({
+                  variant: 'ghost',
+                  size: 'sm',
+                  className: 'hidden lg:inline-flex',
+                })}
               >
-                <ShieldCheck className="h-4 w-4 text-fg-3" aria-hidden />
-                Admin
-              </button>
+                Create account
+              </Link>
             </>
           )}
 
           <button
-            onClick={() => setDrawerOpen((v) => !v)}
-            aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setDrawerOpen((value) => !value)}
+            aria-label={drawerOpen ? 'Close site menu' : 'Open site menu'}
             aria-expanded={drawerOpen}
+            aria-controls="mobile-menu"
             className="btn btn-icon btn-secondary md:hidden"
           >
             {drawerOpen ? <X className="h-4 w-4" aria-hidden /> : <Menu className="h-4 w-4" aria-hidden />}
@@ -274,82 +312,127 @@ export default function Navbar() {
         </div>
       </div>
 
-      {/* Mobile drawer */}
       {drawerOpen && (
-        <div className="border-t border-line bg-ink-850 md:hidden">
-          <div className="shell flex flex-col gap-1 py-3">
-            {NAV_ITEMS.map((item) => {
-              const active = isCurrent(pathname, item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                    active ? 'bg-ink-750 text-white' : 'text-fg-2 hover:bg-ink-750 hover:text-white'
-                  )}
-                >
-                  <Icon className="h-4 w-4 text-fg-3" aria-hidden />
-                  {item.label}
-                </Link>
-              );
-            })}
-
-            <Link
-              href="/admin"
-              aria-current={isCurrent(pathname, '/admin') ? 'page' : undefined}
-              className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-                isCurrent(pathname, '/admin') ? 'bg-ink-750 text-white' : 'text-fg-2 hover:bg-ink-750 hover:text-white'
-              )}
-            >
-              <ShieldCheck className="h-4 w-4 text-fg-3" aria-hidden />
-              Admin studio
-            </Link>
-
-            <div className="my-2 h-px bg-line" />
-
-            <div className="flex flex-wrap items-center gap-2">
+        <>
+          <div
+            className="fixed inset-x-0 bottom-0 top-16 z-40 bg-black/55 md:hidden"
+            aria-hidden
+            onClick={() => setDrawerOpen(false)}
+          />
+          <div
+            id="mobile-menu"
+            ref={drawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Site menu"
+            className="fixed inset-x-0 bottom-0 top-16 z-50 overflow-y-auto border-t border-line bg-ink-900 md:hidden"
+          >
+            <div className="shell flex flex-col gap-5 py-5">
               {user ? (
-                <>
-                  <button onClick={switchRole} disabled={busy} className={buttonClass({ size: 'sm' })}>
-                    <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden />
-                    Switch to {isAdmin ? 'student' : 'admin'}
-                  </button>
-                  <Link href="/profile" className={buttonClass({ size: 'sm' })}>
-                    <User className="h-3.5 w-3.5" aria-hidden />
-                    Profile
+                <div className="flex items-center gap-3 rounded-lg border border-line bg-ink-800 p-3.5">
+                  <span
+                    className={cn(
+                      'grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold text-white',
+                      isAdmin ? 'bg-mark' : 'bg-accent/80 text-ink-950'
+                    )}
+                    aria-hidden
+                  >
+                    {isAdmin ? <ShieldCheck className="h-4 w-4" /> : (user.name || '?').charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-white">{user.name}</p>
+                    <p className="truncate text-xs text-fg-3">{user.email}</p>
+                  </div>
+                  <span className="ml-auto shrink-0 badge badge-neutral">{roleLabel}</span>
+                </div>
+              ) : null}
+
+              <div className="flex flex-col gap-0.5">
+                {NAV_ITEMS.map((item) => {
+                  const active = isCurrent(pathname, item.href);
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'flex items-center gap-3 rounded-md border-l-2 px-3 py-2.5 text-sm font-medium transition-colors',
+                        active
+                          ? 'border-mark-bright bg-white/[0.04] text-white'
+                          : 'border-transparent text-fg-2 hover:bg-white/[0.04] hover:text-white'
+                      )}
+                    >
+                      <Icon className="h-4 w-4 text-fg-3" aria-hidden />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+
+                <Link
+                  href="/profile"
+                  className="flex items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2.5 text-sm font-medium text-fg-2 transition-colors hover:bg-white/[0.04] hover:text-white"
+                >
+                  <User className="h-4 w-4 text-fg-3" aria-hidden />
+                  My profile
+                </Link>
+
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="flex items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2.5 text-sm font-medium text-fg-2 transition-colors hover:bg-white/[0.04] hover:text-white"
+                  >
+                    <ShieldCheck className="h-4 w-4 text-fg-3" aria-hidden />
+                    Question studio
                   </Link>
-                  <button onClick={signOut} className={buttonClass({ variant: 'danger', size: 'sm' })}>
-                    <LogOut className="h-3.5 w-3.5" aria-hidden />
-                    Sign out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => signIn('student')}
-                    disabled={busy}
-                    className={buttonClass({ variant: 'primary', size: 'sm' })}
-                  >
-                    <GraduationCap className="h-4 w-4" aria-hidden />
-                    Sign in as student
-                  </button>
-                  <button
-                    onClick={() => signIn('admin')}
-                    disabled={busy}
-                    className={buttonClass({ size: 'sm' })}
-                  >
-                    <ShieldCheck className="h-4 w-4" aria-hidden />
-                    Sign in as admin
-                  </button>
-                </>
-              )}
+                )}
+              </div>
+
+              <div className="border-t border-line pt-4">
+                {user ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={switchRole}
+                      disabled={busy}
+                      className={buttonClass({ size: 'sm' })}
+                    >
+                      <ArrowLeftRight className="h-3.5 w-3.5" aria-hidden />
+                      {busy ? 'Switching…' : `Switch to ${isAdmin ? 'student' : 'trainer'} demo`}
+                    </button>
+                    <button
+                      onClick={signOut}
+                      className={buttonClass({ variant: 'danger', size: 'sm' })}
+                    >
+                      <LogOut className="h-3.5 w-3.5" aria-hidden />
+                      Sign out
+                    </button>
+                    {roleError ? (
+                      <p className="w-full text-xs text-hard" role="alert">
+                        {roleError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <Link
+                      href="/login"
+                      className={buttonClass({ variant: 'primary', size: 'md', block: true })}
+                    >
+                      <LogIn className="h-4 w-4" aria-hidden />
+                      Sign in
+                    </Link>
+                    <Link
+                      href="/login?mode=register"
+                      className={buttonClass({ size: 'md', block: true })}
+                    >
+                      Create a free account
+                    </Link>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </nav>
   );

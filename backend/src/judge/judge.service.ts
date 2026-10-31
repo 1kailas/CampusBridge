@@ -65,6 +65,7 @@ export class JudgeService {
     try {
       const normalizedLang = language.toLowerCase();
       let runnableCode = code || '';
+      let javaMainClass: string | undefined;
 
       // Automatically wrap clean LeetCode solution signatures if user didn't write manual stdin harness
       const driver = problemSlug ? PROBLEM_DRIVERS[problemSlug] : null;
@@ -174,12 +175,33 @@ if (fn) {
           runnableCode = driver.javaDriver(code);
         }
         let className = 'Main';
-        const classMatch = runnableCode.match(/public\s+class\s+([A-Za-z0-9_]+)/);
-        if (classMatch && classMatch[1]) {
-          className = classMatch[1];
+        if (!driver) {
+          const classMatch = runnableCode.match(/public\s+(?:final\s+)?class\s+([A-Za-z0-9_]+)/);
+          if (classMatch && classMatch[1]) {
+            className = classMatch[1];
+          }
         }
         const srcPath = path.join(workDir, `${className}.java`);
         fs.writeFileSync(srcPath, runnableCode, 'utf-8');
+
+        try {
+          await execAsync(`javac -encoding UTF-8 "${srcPath}"`, {
+            timeout: 20000,
+            cwd: workDir,
+          });
+        } catch (compileErr: any) {
+          return {
+            status: 'COMPILATION_ERROR',
+            runtimeMs: 0,
+            memoryKb: 0,
+            passedTests: 0,
+            totalTests: testCases.length,
+            compileError: compileErr.stderr || compileErr.message,
+            testResults: [],
+          };
+        }
+
+        javaMainClass = className;
       } else {
         throw new Error(`Unsupported language: ${language}`);
       }
@@ -198,6 +220,7 @@ if (fn) {
           workDir,
           tc.input,
           timeLimitMs,
+          javaMainClass,
         );
 
         const runtimeMs = singleResult.runtimeMs;
@@ -205,16 +228,20 @@ if (fn) {
 
         let passed = false;
         let actualOutput = singleResult.stdout.trim();
+        let caseStatus: JudgeResult['status'] = 'ACCEPTED';
 
         if (singleResult.isTimeout) {
-          overallStatus = 'TIME_LIMIT_EXCEEDED';
+          caseStatus = 'TIME_LIMIT_EXCEEDED';
         } else if (singleResult.exitCode !== 0) {
-          overallStatus = 'RUNTIME_ERROR';
+          caseStatus = 'RUNTIME_ERROR';
         } else {
           if (!tc.expectedOutput || tc.expectedOutput.trim() === '') {
             passed = true;
           } else {
-            passed = this.compareOutputs(actualOutput, tc.expectedOutput);
+            passed = this.compareOutputs(actualOutput, tc.expectedOutput, problemSlug);
+          }
+          if (!passed) {
+            caseStatus = 'WRONG_ANSWER';
           }
         }
 
@@ -236,9 +263,7 @@ if (fn) {
           passedCount++;
         } else if (!firstFailure) {
           firstFailure = tcResult;
-          if (overallStatus === 'ACCEPTED') {
-            overallStatus = 'WRONG_ANSWER';
-          }
+          overallStatus = caseStatus;
         }
       }
 
@@ -266,6 +291,7 @@ if (fn) {
     workDir: string,
     inputData: string,
     timeLimitMs: number,
+    javaMainClass?: string,
   ): Promise<{ stdout: string; stderr: string; exitCode: number; runtimeMs: number; isTimeout: boolean }> {
     return new Promise((resolve) => {
       let cmd = '';
@@ -281,11 +307,19 @@ if (fn) {
         cmd = 'node';
         args = ['solution.js'];
       } else if (language === 'java') {
-        // find .java file in workDir
-        const files = fs.readdirSync(workDir);
-        const javaFile = files.find((f) => f.endsWith('.java')) || 'Solution.java';
         cmd = 'java';
-        args = [javaFile];
+        args = ['-Xmx256m', '-Xss8m', '-cp', '.', javaMainClass || 'Main'];
+      }
+
+      if (!cmd) {
+        resolve({
+          stdout: '',
+          stderr: `Unsupported execution runtime: ${language}`,
+          exitCode: 1,
+          runtimeMs: 0,
+          isTimeout: false,
+        });
+        return;
       }
 
       const startTime = Date.now();
@@ -295,7 +329,14 @@ if (fn) {
 
       const proc = spawn(cmd, args, {
         cwd: workDir,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+        // Keep the child environment small: no application secrets, no user home.
+        env: {
+          PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+          HOME: workDir,
+          LANG: 'C.UTF-8',
+          LC_ALL: 'C.UTF-8',
+          PYTHONUNBUFFERED: '1',
+        },
       });
 
       const timer = setTimeout(() => {
@@ -360,7 +401,7 @@ if (fn) {
     });
   }
 
-  private compareOutputs(actual: string, expected: string): boolean {
+  private compareOutputs(actual: string, expected: string, problemSlug?: string): boolean {
     const act = actual.trim();
     const exp = expected.trim();
 
@@ -377,9 +418,10 @@ if (fn) {
       const expObj = JSON.parse(exp);
       if (JSON.stringify(actObj) === JSON.stringify(expObj)) return true;
 
-      // Check if both are arrays with same elements (ignoring order if appropriate, or direct match)
-      if (Array.isArray(actObj) && Array.isArray(expObj)) {
-        if (JSON.stringify(actObj.slice().sort()) === JSON.stringify(expObj.slice().sort())) {
+      // Allow unordered array comparison only for problems where index/element order is explicitly arbitrary
+      if (problemSlug === 'two-sum' && Array.isArray(actObj) && Array.isArray(expObj)) {
+        const sortNum = (a: any, b: any) => (a < b ? -1 : a > b ? 1 : 0);
+        if (JSON.stringify([...actObj].sort(sortNum)) === JSON.stringify([...expObj].sort(sortNum))) {
           return true;
         }
       }
@@ -392,11 +434,13 @@ if (fn) {
       return true;
     }
 
-    // Check numerical equality
-    const actNum = parseFloat(act);
-    const expNum = parseFloat(exp);
-    if (!isNaN(actNum) && !isNaN(expNum) && Math.abs(actNum - expNum) < 1e-5) {
-      return true;
+    // Check numerical equality only when both represent entire numbers
+    if (act !== '' && exp !== '') {
+      const actNum = Number(act);
+      const expNum = Number(exp);
+      if (!isNaN(actNum) && !isNaN(expNum) && Math.abs(actNum - expNum) < 1e-5) {
+        return true;
+      }
     }
 
     return false;

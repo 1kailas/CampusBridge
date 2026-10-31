@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 
 const fontFamily = [
+  'Inter',
   'ui-sans-serif',
   'system-ui',
   '-apple-system',
@@ -25,58 +26,66 @@ module.exports = {
       },
 
       colors: {
-        /* Surfaces — cool graphite, one step per elevation */
+        /* Deep navy surfaces — one step per elevation. */
         ink: {
-          950: '#080A0F', // editor canvas, deepest wells
-          900: '#0C0F15', // app background
-          850: '#10141B', // chrome: navbar, toolbars
-          800: '#141922', // panel / card
-          750: '#191F2A', // nested surface, table head, hover
-          700: '#1F2632', // inputs, raised controls
-          600: '#2A3241', // control borders on hover
-          500: '#39424F', // strong dividers
+          950: '#050914', // editor canvas, deepest wells
+          900: '#080E1B', // app background
+          850: '#0C1424', // chrome: navbar, toolbars
+          800: '#101B2E', // panel / card
+          750: '#152239', // nested surface, table head, hover
+          700: '#1C2C48', // inputs, raised controls
+          600: '#2A3D61', // control borders on hover
+          500: '#3B527D', // strong dividers
         },
 
         /* Hairlines */
         line: {
-          DEFAULT: '#232A38',
-          soft: '#1A202B',
-          strong: '#2E3749',
+          DEFAULT: '#22314E',
+          soft: '#18243A',
+          strong: '#33466A',
         },
 
-        /* Text */
+        /* Text — every step clears WCAG AA on ink-700 or darker. */
         fg: {
-          DEFAULT: '#E9ECF3',
-          2: '#A7B0C2',
-          3: '#727C90',
-          4: '#4E5768',
+          DEFAULT: '#E9EEF9',
+          2: '#C2CCDE',
+          3: '#98A6BF',
+          4: '#8B99B4',
         },
 
-        /* Brand — highlighter amber. Logo, streak, rank, reward, focus. */
+        /* Brand — indigo actions, with cyan as a sparing secondary accent. */
         mark: {
-          DEFAULT: '#FFC145',
-          600: '#E8A92E',
-          700: '#C68C1E',
+          DEFAULT: '#4F46E5',
+          bright: '#A5B4FC',
+          600: '#4338CA',
+          700: '#3730A3',
         },
+        accent: '#22D3EE',
 
-        /* Semantic — difficulty is the only saturated set */
-        easy: '#3FC38A',
-        medium: '#F0863C',
-        hard: '#F0596B',
+        /* Semantic — difficulty and verdicts. */
+        easy: '#34D399',
+        medium: '#FBBF24',
+        hard: '#FB7185',
 
-        /* Neutral action — the one primary button */
-        paper: '#EDF0F6',
-        paperdim: '#D3D9E4',
+        /* Neutral action surfaces. */
+        paper: '#F3F6FF',
+        paperdim: '#DDE5F7',
       },
 
       fontFamily: {
-        sans: ['var(--font-plex-sans)', ...fontFamily],
-        mono: ['var(--font-plex-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+        sans: ['var(--font-sans)', ...fontFamily],
+        mono: [
+          'var(--font-mono)',
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'Consolas',
+          'monospace',
+        ],
       },
 
       fontSize: {
-        // 2xs used only for micro-labels inside dense chrome
-        '2xs': ['0.6875rem', { lineHeight: '1.35' }],
+        '2xs': ['0.6875rem', { lineHeight: '1.4' }],
       },
 
       borderRadius: {
@@ -90,13 +99,26 @@ module.exports = {
       },
 
       boxShadow: {
-        pop: '0 24px 48px -16px rgba(0,0,0,0.72), 0 0 0 1px rgba(255,255,255,0.03)',
-        lift: '0 8px 24px -12px rgba(0,0,0,0.6)',
-        inset: 'inset 0 1px 0 rgba(255,255,255,0.025)',
+        pop: '0 24px 60px -28px rgba(2, 6, 18, 0.95)',
+        lift: '0 12px 32px -24px rgba(2, 6, 18, 0.9)',
+        inset: 'inset 0 1px 0 rgba(255, 255, 255, 0.035)',
+        glow: '0 0 0 1px rgba(79, 70, 229, 0.28), 0 16px 40px -24px rgba(79, 70, 229, 0.55)',
       },
 
       maxWidth: {
-        shell: '1440px',
+        shell: '1320px',
+        prose: '68ch',
+      },
+
+      keyframes: {
+        'fade-up': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+
+      animation: {
+        'fade-up': 'fade-up 0.32s cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },

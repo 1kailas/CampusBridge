@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/$/, '');
 
 function getAuthHeader(): Record<string, string> {
   if (typeof window === 'undefined') return {};
@@ -38,7 +38,7 @@ export function clearApiCache(prefix?: string): void {
     memoryCache.clear();
   } else {
     for (const key of Array.from(memoryCache.keys())) {
-      if (key.startsWith(prefix)) memoryCache.delete(key);
+      if (key.startsWith(prefix) || key.includes(prefix)) memoryCache.delete(key);
     }
   }
 }

@@ -21,6 +21,8 @@ backend/prisma/dev.db
 .env
 .env*.local
 *.env
+!.env.example
+!**/.env.example
 
 # Logs
 *.log
@@ -34,6 +36,8 @@ yarn-error.log*
 # Editor and OS
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
+*Zone.Identifier*
 .vscode/
 .idea/
 .claude/
